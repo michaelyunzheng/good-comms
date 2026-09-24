@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Clearly
 
-## Getting Started
+Clearly is a speaking practice app for getting better at answering questions out loud.
 
-First, run the development server:
+You get a prompt, a short window to think, then record your response. Clearly transcribes it and gives you concise feedback on how clearly you communicated.
+
+## How it works
+
+A session has three parts:
+
+**Think**  
+90 seconds to prepare.
+
+Use a simple structure:
+
+**Point → What → So what → Now what → Point**
+
+**Speak**  
+Record your answer in the browser with a live timer and microphone-responsive waveform.
+
+Recordings are capped at 2 minutes.
+
+**Review**  
+Your response is transcribed automatically, then analysed for:
+
+- Clarity
+- Structure
+- Relevance
+- Concision
+- Specificity
+
+The goal is useful feedback, not a personality score.
+
+## Stack
+
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- MediaRecorder API
+- Web Audio API
+- OpenAI API
+
+Typography:
+
+- Newsreader
+- Bricolage Grotesque
+- IBM Plex Mono
+
+## Project structure
+
+```text
+app/
+├── api/
+│   ├── access/
+│   │   └── route.ts
+│   ├── transcribe/
+│   │   └── route.ts
+│   └── analyse/
+│       └── route.ts
+├── session/
+│   └── page.tsx
+├── globals.css
+├── layout.tsx
+└── page.tsx
+
+components/
+└── session-client.tsx
+
+lib/
+├── access.ts
+└── openai.ts
+```
+
+## Getting started
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create `.env.local` in the project root:
+
+```env
+BETA_PASSWORD=your_beta_password
+OPENAI_API_KEY=your_openai_api_key
+```
+
+Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+Development:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Production build:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run build
+```
 
-## Deploy on Vercel
+Lint:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run lint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+
+Transcription and analysis use the OpenAI API and require API credits.
+
+Keep `OPENAI_API_KEY` server-side. Do not expose it with a `NEXT_PUBLIC_` prefix.
+
+Clearly is currently an early private beta.
+
+**Think. Speak. Review.**
