@@ -92,17 +92,21 @@ const idleWaveform =
   );
 
 const prompts = [
-  "Tell me about something you were completely wrong about.",
+  "What everyday thing deserves a much bigger fan club?",
 
-  "What is something most people misunderstand?",
+  "What's something you know a surprising amount about?",
 
-  "Tell me about a decision that changed the direction of your life.",
+  "If you could add one harmless rule everyone had to follow, what would it be?",
 
-  "Explain something complicated in a way anyone could understand.",
+  "What small invention would make your day noticeably better?",
 
-  "What is an opinion you have changed recently?",
+  "What's a boring thing you find weirdly fascinating?",
 
-  "Tell me about a difficult problem you had to solve.",
+  "Which fictional gadget would you most like to borrow for a week?",
+
+  "What's a tiny moment that can turn an ordinary day around?",
+
+  "What skill looks like magic until you learn how it works?",
 ];
 
 function formatTime(
