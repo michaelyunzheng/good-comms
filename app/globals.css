@@ -1685,24 +1685,16 @@ div:not(.signal-line) {
     both;
 }
 
-.speaking-framework--quiet {
-  opacity: 0.2;
-}
-
 .framework-item {
   min-width: 0;
 
   padding:
-    24px
     20px
-    25px
-    0;
+    16px;
 }
 
 .framework-item +
 .framework-item {
-  padding-left: 20px;
-
   border-left:
     1px solid
     var(--line);
@@ -1713,26 +1705,55 @@ div:not(.signal-line) {
 
   font-family: var(--font-display);
 
-  font-size: 24px;
+  font-size: 19px;
   font-style: italic;
   font-weight: 420;
 
-  line-height: 1;
-  letter-spacing: -0.044em;
+  line-height: 1.15;
 }
 
 .framework-item p {
   margin:
-    7px
+    8px
     0
     0;
 
   color: var(--muted);
 
+  font-size: 11px;
+
+  line-height: 1.4;
+}
+
+.framework-item .framework-example {
+  margin-top: 12px;
+  padding-top: 9px;
+
+  border-top:
+    1px solid
+    var(--line-soft);
+
+  color: var(--ink);
+
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+
+  line-height: 1.3;
+}
+
+.framework-example-label {
+  display: block;
+
+  margin-bottom: 4px;
+
+  color: var(--signal);
+
   font-family: var(--font-mono);
   font-size: 9px;
-
-  line-height: 1.45;
+  font-style: normal;
+  font-weight: 500;
+  text-transform: uppercase;
 }
 
 
@@ -2637,8 +2658,8 @@ textarea:focus-visible {
     display: grid;
 
     grid-template-columns:
-      105px
-      1fr;
+      120px
+      minmax(0, 1fr);
 
     align-items: baseline;
 
@@ -2660,6 +2681,20 @@ textarea:focus-visible {
 
   .framework-item p {
     margin: 0;
+  }
+
+  .framework-item .framework-example {
+    grid-column: 2;
+    margin-top: 6px;
+    padding-top: 0;
+
+    border-top: 0;
+  }
+
+  .framework-example-label {
+    display: inline;
+
+    margin: 0 5px 0 0;
   }
 
   .record-control {

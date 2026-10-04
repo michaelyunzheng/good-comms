@@ -824,28 +824,28 @@ export default function SessionClient() {
     if (
       prepSeconds === 0
     ) {
-      return "Ready when you are.";
+      return "Take your time. Start when ready.";
     }
 
     if (
       prepSeconds <= 10
     ) {
-      return "Know the ending.";
+      return "One easy breath, then your first point.";
     }
 
     if (
       prepSeconds <= 30
     ) {
-      return "Why does it matter?";
+      return "Choose one detail they can picture.";
     }
 
     if (
       prepSeconds <= 60
     ) {
-      return "Pick the example.";
+      return "Picture one person you're talking with.";
     }
 
-    return "Find the point.";
+    return "Let your shoulders soften. Find your point.";
   }
 
   function getStepState(
@@ -1240,37 +1240,35 @@ export default function SessionClient() {
               )}
             </section>
 
-            <section
-              className={`speaking-framework ${
-                phase ===
-                "recording"
-                  ? "speaking-framework--quiet"
-                  : ""
-              }`}
-            >
+            <section className="speaking-framework">
               <FrameworkItem
                 title="Point"
-                text="Lead."
+                text="Lead with the thought you want them to know."
+                example="The short version is ..."
               />
 
               <FrameworkItem
-                title="What"
-                text="What happened?"
+                title="What happened?"
+                text="Share one moment they can picture."
+                example="One moment that sticks with me is ..."
               />
 
               <FrameworkItem
-                title="So what"
-                text="Why it mattered."
+                title="So what?"
+                text="Say why it mattered to you."
+                example="What I noticed was ..."
               />
 
               <FrameworkItem
-                title="Now what"
-                text="What changed?"
+                title="Now what?"
+                text="Connect it to what you learned or do now."
+                example="These days, I ..."
               />
 
               <FrameworkItem
-                title="Point"
-                text="Land it."
+                title="Takeaway"
+                text="Close with a thought, then invite their view."
+                example="What about you?"
               />
             </section>
 
@@ -1637,9 +1635,11 @@ function FlowStep({
 function FrameworkItem({
   title,
   text,
+  example,
 }: {
   title: string;
   text: string;
+  example: string;
 }) {
   return (
     <div className="framework-item">
@@ -1649,6 +1649,12 @@ function FrameworkItem({
 
       <p>
         {text}
+      </p>
+
+      <p className="framework-example">
+        <span className="framework-example-label">Try</span>
+        {" "}
+        {example}
       </p>
     </div>
   );
