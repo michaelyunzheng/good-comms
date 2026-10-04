@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { Brand } from "@/components/brand";
+import { SoundOrb } from "@/components/sound-orb";
 
 import {
   FormEvent,
@@ -10,15 +12,19 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-const waveform = [
-  22, 38, 61, 35, 74, 48, 26, 63, 88,
-  45, 71, 33, 58, 78, 41, 28, 54, 70,
-  38, 64, 31, 20, 47, 76, 50, 28, 67,
-  42, 24, 55, 73, 43, 60, 32, 19,
-];
+const previewStages = [
+  { title: "Think", label: "Find your point.", description: "One question. A moment to gather your thoughts. A simple structure to make them land.", tone: "mint", time: "01:30", hint: "A little room to think" },
+  { title: "Speak", label: "Make it your own.", description: "Say it out loud, in your own words. No scripts, no perfect takes. Just you and a good question.", tone: "warm", time: "02:00", hint: "Your voice, your perspective" },
+  { title: "Review", label: "Hear what worked.", description: "Read your transcript, listen back, and take one useful thing into your next conversation.", tone: "violet", time: "One", hint: "Small improvements add up" },
+] as const;
+
+const waveform = [18, 35, 26, 60, 42, 75, 54, 32, 66, 86, 50, 72, 40, 62, 28, 47, 79, 58, 34, 68, 45, 24, 55, 38];
 
 export default function Home() {
   const router = useRouter();
+  const [previewStage, setPreviewStage] = useState(1);
+  const preview = previewStages[previewStage];
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const [gateOpen, setGateOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -130,179 +136,94 @@ export default function Home() {
   }
 
   return (
-    <main className="landing">
+    <main className="landing" id="top">
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <div className="announcement"><span className="status-dot" /> A little practice. A clearer conversation.</div>
       <header className="site-header">
-        <Link
-          className="wordmark"
-          href="/"
-          aria-label="Clearly home"
-        >
-          clearly<span>°</span>
-        </Link>
-
-        <button
-          className="text-button"
-          onClick={openGate}
-        >
-          Enter
-        </button>
+        <Link href="/" aria-label="Clearly home"><Brand /></Link>
+        <nav className="landing-nav" aria-label="Main navigation">
+          <a href="#how-it-works">How it works</a>
+          <a href="#the-method">The method</a>
+        </nav>
+        <button className="button button--outline" onClick={openGate}>Log in <span aria-hidden="true">↗</span></button>
       </header>
 
-      <section className="hero">
-        <div className="hero-aura" />
-
-        <div className="hero-copy">
-          <h1>
-            <span>Speak clearly.</span>
-            <em>Be understood.</em>
-          </h1>
-
-          <p>
-            Practice out loud.
-            <br />
-            See what worked.
-          </p>
-        </div>
-
-        <button
-          className="voice-object"
-          onClick={openGate}
-          aria-label="Start"
-        >
-          <span className="voice-ring voice-ring--outer" />
-          <span className="voice-ring voice-ring--inner" />
-
-          <span className="voice-core">
-            <span className="record-dot" />
-          </span>
-
-          <span className="voice-label">
-            Start
-          </span>
-        </button>
-      </section>
-
-      <section className="product-section">
-        <div className="product-intro">
-          <h2>
-            Think.
-            <br />
-            Speak.
-            <br />
-            Review.
-          </h2>
-
-          <p>
-            One question.
-            <br />
-            One take.
-            <br />
-            Useful feedback.
-          </p>
-        </div>
-
-        <div className="product-preview">
-          <div className="signal-line" />
-
-          <div className="preview-prompt">
-            <span className="preview-label">
-              Prompt
-            </span>
-
-            <p>
-              Tell me about something
-              <br />
-              you changed your mind about.
-            </p>
-
-            <div className="preview-framework">
-              <span>Point</span>
-              <span>What</span>
-              <span>So what</span>
-              <span>Now what</span>
-              <span>Point</span>
+      <div id="main-content" className="landing-content">
+        <section className="hero" aria-labelledby="hero-title">
+          <div className="hero-copy">
+            <p className="eyebrow"><span className="tiny-wave" aria-hidden="true">ıııı</span> A space to practise speaking</p>
+            <h1 id="hero-title">Speak clearly.<br />Be understood.</h1>
+            <div className="hero-actions">
+              <button className="button button--dark" onClick={openGate}>Start practising <span aria-hidden="true">↗</span></button>
+              <a className="button button--outline" href="#how-it-works">See how it works</a>
             </div>
           </div>
+          <p className="hero-description">Good conversations start with a clear thought. Find yours with a question, a moment to think, and a little practice out loud.</p>
+        </section>
 
-          <div className="preview-response">
-            <div className="response-top">
-              <span>01:12</span>
-            </div>
-
-            <div
-              className="preview-waveform"
-              aria-hidden="true"
-            >
-              {waveform.map((height, index) => (
-                <span
-                  key={index}
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
-
-            <p className="sample-transcript">
-              I used to think changing your mind meant
-              you had been wrong. Now I think it often
-              means you finally have enough information
-              to see the problem clearly.
-            </p>
+        <section className="practice-preview" aria-label="Preview the practice experience">
+          <div className="preview-tabs" role="tablist" aria-label="Practice stages">
+            {previewStages.map((stage, index) => (
+              <button key={stage.title} id={`preview-tab-${index}`} role="tab" aria-selected={previewStage === index}
+                aria-controls="preview-panel" tabIndex={previewStage === index ? 0 : -1}
+                ref={(element) => { tabRefs.current[index] = element; }}
+                onClick={() => setPreviewStage(index)}
+                onKeyDown={(event) => {
+                  let next = index;
+                  if (event.key === "ArrowRight") next = (index + 1) % previewStages.length;
+                  else if (event.key === "ArrowLeft") next = (index + previewStages.length - 1) % previewStages.length;
+                  else if (event.key === "Home") next = 0;
+                  else if (event.key === "End") next = previewStages.length - 1;
+                  else return;
+                  event.preventDefault(); setPreviewStage(next); tabRefs.current[next]?.focus();
+                }}>
+                <SoundOrb tone={stage.tone} className="tab-orb" />{stage.title}<span className="tab-number">0{index + 1}</span>
+              </button>
+            ))}
           </div>
-
-          <div className="preview-feedback">
-            <span className="preview-label">
-              Feedback
-            </span>
-
-            <p className="feedback-main">
-              Strong opening.
-              <br />
-              Get to the example sooner.
-            </p>
-
-            <div className="feedback-metrics">
-              <div>
-                <span>Clarity</span>
-                <strong>Strong</strong>
-              </div>
-
-              <div>
-                <span>Structure</span>
-                <strong>Clear</strong>
-              </div>
-
-              <div>
-                <span>Concision</span>
-                <strong>Tighten</strong>
-              </div>
+          <div className="preview-panel" id="preview-panel" role="tabpanel" aria-labelledby={`preview-tab-${previewStage}`} tabIndex={0}>
+            <div className="preview-note"><span className="eyebrow">0{previewStage + 1} / {preview.title}</span><h2>{preview.label}</h2><p>{preview.description}</p></div>
+            <div className="orb-scene">
+              <SoundOrb tone="mint" className="scene-orb scene-orb--left" />
+              <SoundOrb tone={preview.tone} className="scene-orb scene-orb--main" />
+              <SoundOrb tone="violet" className="scene-orb scene-orb--right" />
+              <div className="orb-caption"><span>{preview.time}</span><p>{preview.hint}</p></div>
+            </div>
+            <div className="preview-example">
+              <div className="example-heading"><span className="eyebrow">{previewStage === 2 ? "A useful observation" : "Your question"}</span><span className="example-dot" /></div>
+              <p>{previewStage === 2 ? "Strong opening. Get to the example sooner." : "Tell me about something you changed your mind about."}</p>
+              {previewStage === 1 ? <div className="preview-waveform" aria-hidden="true">{waveform.map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div>
+                : <div className="preview-chips">{(previewStage === 0 ? ["Point", "What", "So what", "Now what"] : ["Clarity", "Structure", "Concision"]).map(label => <span key={label}>{label}</span>)}</div>}
+              <span className="example-footer">{previewStage === 2 ? "One thing to take into your next conversation." : "No perfect answers. Just your perspective."}</span>
             </div>
           </div>
-        </div>
-      </section>
+          <div className="preview-bottom"><span>Think. Speak. Review.</span><button className="text-button" onClick={openGate}>Try a session <span aria-hidden="true">↗</span></button></div>
+        </section>
 
-      <section className="final-section">
-        <div className="final-aura" />
+        <section className="how-section" id="how-it-works" aria-labelledby="how-title">
+          <div className="section-heading"><h2 id="how-title">A small habit.<br />A noticeable difference.</h2><p>A few minutes to practise being understood.<br />One answer at a time.</p></div>
+          <div className="step-cards">
+            {previewStages.map((stage, index) => <article className="step-card" key={stage.title}>
+              <div className="step-card-top"><SoundOrb tone={stage.tone} /><span>0{index + 1}</span></div>
+              <h3>{stage.title}.</h3><p>{stage.description}</p><span className="step-detail">{["90 seconds to prepare", "Up to 2 minutes to speak", "A transcript and useful feedback"][index]}</span>
+            </article>)}
+          </div>
+        </section>
 
-        <h2>
-          Get clearer.
-        </h2>
+        <section className="method-section" id="the-method" aria-labelledby="method-title">
+          <div className="method-copy"><p className="eyebrow">A little structure goes a long way</p><h2 id="method-title">Give your thoughts<br />somewhere to go.</h2><p>Lead with your point. Share a moment. Say why it matters. Bring it back to the conversation.</p><span className="method-note">A helpful scaffold, never a script.</span></div>
+          <ol className="method-list">{[
+            ["Point", "Lead with what you want them to know."],
+            ["What happened?", "Share a moment they can picture."],
+            ["So what?", "Say why it mattered to you."],
+            ["Now what?", "Connect it to what you learned."],
+            ["Takeaway", "Land the thought. Invite their view."],
+          ].map(([title, description], index) => <li key={title}><span className="method-number">0{index + 1}</span><div><h3>{title}</h3><p>{description}</p></div><span aria-hidden="true">↗</span></li>)}</ol>
+        </section>
 
-        <button
-          className="primary-button"
-          onClick={openGate}
-        >
-          Start
-          <span>↗</span>
-        </button>
-      </section>
-
-      <footer className="site-footer">
-        <Link className="wordmark" href="/">
-          clearly<span>°</span>
-        </Link>
-
-        <span>2026</span>
-      </footer>
+        <section className="closing-section"><SoundOrb tone="violet" /><div><p className="eyebrow">Your next good conversation starts here</p><h2>Make yourself understood.</h2><button className="button button--dark" onClick={openGate}>Start practising <span aria-hidden="true">↗</span></button></div></section>
+      </div>
+      <footer className="site-footer"><Link href="/" aria-label="Clearly home"><Brand /></Link><span>Think. Speak. Review.</span><span>© {new Date().getFullYear()} Clearly</span></footer>
 
       {gateOpen && (
         <div
@@ -327,13 +248,15 @@ export default function Home() {
               ×
             </button>
 
-            <h2 id="gate-title">
-              Enter.
-            </h2>
+            <Brand />
+            <h2 id="gate-title">Welcome to Clearly</h2>
+            <p className="gate-description">A little practice for your next conversation.</p>
 
             <form onSubmit={handleAccess}>
+              <label className="gate-label" htmlFor="beta-password">Beta password</label>
               <div className="password-row">
                 <input
+                  id="beta-password"
                   ref={passwordRef}
                   type="password"
                   value={password}
@@ -342,7 +265,7 @@ export default function Home() {
                     setPassword(event.target.value);
                     setError("");
                   }}
-                  placeholder="Password"
+                  placeholder="Enter your beta password"
                   aria-label="Password"
                 />
 
@@ -353,7 +276,7 @@ export default function Home() {
                   }
                   aria-label="Enter"
                 >
-                  {loading ? "·" : "→"}
+                  {loading ? "Signing in…" : "Continue"}
                 </button>
               </div>
 

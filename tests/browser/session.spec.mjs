@@ -193,3 +193,13 @@ test('New ignores a stale transcription even if cancellation is ignored', async 
   await page.evaluate(() => window.recordingTest.transcriptionResolvers.shift()(Response.json({ transcript: 'Stale transcription' })));
   await expect(page.getByRole('textbox', { name: 'Transcript' })).toHaveValue(/concrete example/);
 });
+
+test('mobile practice and feedback remain usable without horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await expect(page.getByRole('heading', { name: 'Latest feedback' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

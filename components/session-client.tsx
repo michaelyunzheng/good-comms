@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { Brand } from "@/components/brand";
+import { SoundOrb } from "@/components/sound-orb";
 
 import {
   useCallback,
@@ -1129,17 +1131,22 @@ export default function SessionClient() {
     100;
 
   return (
+    <div className="session-shell">
+      <a className="skip-link" href="#practice-content">Skip to practice</a>
+      <aside className="workspace-sidebar">
+        <Link href="/" aria-label="Clearly home"><Brand /></Link>
+        <div className="workspace-label"><SoundOrb tone="warm" /> Speaking practice</div>
+        <nav aria-label="Workspace"><Link href="/" className="sidebar-home"><span aria-hidden="true">⌂</span> Home</Link><span className="sidebar-current" aria-current="page"><span aria-hidden="true">◉</span> Practice</span></nav>
+        <div className="sidebar-session"><p className="eyebrow">This session</p>
+          {(["prep", "recording", "review"] as Phase[]).map((step, index) => <div key={step} className={`sidebar-step sidebar-step--${getStepState(step)}`} aria-current={phase === step ? "step" : undefined}><span>0{index + 1}</span>{["Think", "Speak", "Review"][index]}<i aria-hidden="true" /></div>)}
+        </div>
+        <div className="sidebar-bottom"><span><span className="status-dot" /> Private beta</span><p>A little practice.<br />A clearer conversation.</p></div>
+      </aside>
     <main
       className={`session session--${phase}`}
     >
       <header className="session-header">
-        <Link
-          href="/"
-          className="wordmark"
-        >
-          clearly
-          <span>°</span>
-        </Link>
+        <div className="workspace-breadcrumb"><span>Practice</span><span aria-hidden="true">/</span>Speaking session</div>
 
         <button
           className="session-new"
@@ -1152,7 +1159,8 @@ export default function SessionClient() {
         </button>
       </header>
 
-      <div className="session-inner">
+      <div className="session-inner" id="practice-content">
+        <div className="workspace-heading"><div><p className="eyebrow">Your space to practise</p><h1>{phase === "review" ? "A little reflection goes a long way." : "What’s on your mind?"}</h1></div><span className="session-badge">One question. One take.</span></div>
         <nav
           className="session-flow"
           aria-label="Session progress"
@@ -1183,19 +1191,22 @@ export default function SessionClient() {
           "review" && (
           <>
             <section className="session-stage">
+              <SoundOrb tone={phase === "recording" ? "warm" : "mint"} className="session-orb" />
               <div className="session-question">
-                <h1>
+                <p className="eyebrow">Your question</p>
+                <h2>
                   {
                     prompts[
                       promptIndex
                     ]
                   }
-                </h1>
+                </h2>
               </div>
 
               {phase ===
                 "prep" && (
                 <div className="prep-panel">
+                  <span className="eyebrow">Time to think</span>
                   <div className="prep-count">
                     {formatTime(
                       prepSeconds
@@ -1225,6 +1236,7 @@ export default function SessionClient() {
               {phase ===
                 "recording" && (
                 <div className="recording-panel">
+                  <span className="eyebrow"><span className="recording-dot" /> Recording</span>
                   <p className="recording-time">
                     {formatTime(
                       recordingSeconds
@@ -1240,7 +1252,8 @@ export default function SessionClient() {
               )}
             </section>
 
-            <section className="speaking-framework">
+            <div className="framework-heading"><h2>A little structure, if you need it.</h2><p>Use what helps. Make it your own.</p></div>
+            <section className="speaking-framework" aria-label="Speaking framework">
               <FrameworkItem
                 title="Point"
                 text="Lead with the thought you want them to know."
@@ -1289,25 +1302,12 @@ export default function SessionClient() {
                     : startRecording
                 }
               >
-                <span className="record-halo record-halo--outer" />
-                <span className="record-halo record-halo--inner" />
-
-                <span className="record-core">
-                  {phase ===
-                  "recording" ? (
-                    <span className="stop-icon" />
-                  ) : (
-                    <span className="record-icon" />
-                  )}
+                <span className="record-core" aria-hidden="true">
+                  {phase === "recording" ? <span className="stop-icon" /> : <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.7" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
                 </span>
+                {phase === "recording" ? "Stop recording" : startingRecording ? "Starting…" : "Start speaking"}
               </button>
-
-              <p className="record-action">
-                {phase ===
-                "recording"
-                  ? "Stop"
-                  : startingRecording ? "Starting…" : "Speak"}
-              </p>
+              <p className="record-action">{phase === "recording" ? "Take your time. Stop when you’ve landed your point." : "Up to 2 minutes. Start whenever you’re ready."}</p>
 
               {microphoneError && (
                 <p className="microphone-error" role="alert">
@@ -1323,6 +1323,7 @@ export default function SessionClient() {
         {phase ===
           "review" && (
           <section className="review">
+            <p className="review-question"><span>Your question</span>{prompts[promptIndex]}</p>
             <div className="review-heading">
               <h2>
                 Your answer
@@ -1446,6 +1447,7 @@ export default function SessionClient() {
         )}
       </div>
     </main>
+    </div>
   );
 }
 
@@ -1490,6 +1492,7 @@ function AnalysisResults({
 
   return (
     <section className="analysis-results">
+      <p className="eyebrow">Your feedback</p>
       <div className="analysis-lead">
         <div className="analysis-score">
           <div>
@@ -1621,9 +1624,8 @@ function FlowStep({
     <div
       className={`flow-step flow-step--${state}`}
     >
-      <span>
-        {label}
-      </span>
+      <span className="flow-number" aria-hidden="true">{state === "complete" ? "✓" : ({ Think: "01", Speak: "02", Review: "03" }[label])}</span>
+      <span>{label}</span>
 
       <div className="flow-line">
         <span />
