@@ -187,7 +187,7 @@ h1, h2, h3, p { margin: 0; }
 .prep-panel, .recording-panel { position: relative; z-index: 1; align-self: center; padding-left: 26px; border-left: 1px solid #deded8; }
 .prep-panel > .eyebrow, .recording-panel > .eyebrow { font-size: 10px; }
 .prep-count, .recording-time { margin: 8px 0 9px; font-size: 36px; font-weight: 400; letter-spacing: -.06em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.prep-message { font-size: 10px; color: #7b7b72; }
+.prep-message { font-size: 11px; color: #66665f; }
 .prep-track { height: 2px; margin-top: 15px; background: #e4e4de; overflow: hidden; }
 .prep-track span { display: block; height: 100%; width: 100%; background: #7a7b69; transform-origin: left; transition: transform .8s linear; }
 .recording-dot { display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: #d97658; }
@@ -195,12 +195,12 @@ h1, h2, h3, p { margin: 0; }
 .session-waveform > span { flex: 1; min-width: 1px; background: #b28c79; border-radius: 2px; transition: height .05s; }
 .framework-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 32px 0 15px; }
 .framework-heading h2 { font-size: 13px; font-weight: 500; }
-.framework-heading p { font-size: 11px; color: #999990; }
+.framework-heading p { font-size: 11px; color: #6c6c64; }
 .speaking-framework { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
 .framework-item { border: 1px solid var(--line); border-radius: 11px; padding: 17px 14px; background: #fff; }
 .framework-item h2 { font-size: 12px; font-weight: 550; letter-spacing: -.02em; margin-bottom: 10px; }
-.framework-item > p { color: #77776e; font-size: 11px; line-height: 1.6; }
-.framework-item .framework-example { font-size: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #f0f0ec; color: #96968e; }
+.framework-item > p { color: #66665f; font-size: 12px; line-height: 1.6; }
+.framework-item .framework-example { font-size: 11px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #f0f0ec; color: #6c6c64; }
 .framework-example-label { font-weight: 500; color: #7c7c73; }
 .record-control { text-align: center; margin-top: 38px; }
 .record-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; padding: 0 24px; background: #171717; color: #fff; border-radius: 999px; font-size: 13px; font-weight: 500; box-shadow: 0 2px 4px #00000008; transition: background .2s; }
@@ -211,14 +211,14 @@ h1, h2, h3, p { margin: 0; }
 .stop-icon { width: 9px; height: 9px; border-radius: 2px; background: #fff; }
 .record-button--active { background: #a94330; }
 .record-button--active:hover { background: #8d3727; }
-.record-action { margin-top: 12px; color: #94948a; font-size: 10px; }
+.record-action { margin-top: 12px; color: #6c6c64; font-size: 11px; }
 .microphone-error, .inline-error { color: var(--danger); font-size: 12px; line-height: 1.6; margin-top: 16px; }
 .inline-error .text-button { display: block; color: var(--ink); font-size: 12px; }
 
 /* Review and feedback */
 .review { border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
 .review-question { display: flex; gap: 14px; align-items: baseline; padding-bottom: 22px; border-bottom: 1px solid var(--line); color: #6f6f65; font-size: 12px; margin-bottom: 24px; }
-.review-question > span { font-size: 10px; color: #aaa99d; flex: none; }
+.review-question > span { font-size: 10px; color: #6c6c64; flex: none; }
 .review-heading { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 28px; }
 .review-heading h2 { font-size: 23px; font-weight: 450; letter-spacing: -.045em; }
 .playback { display: grid; grid-template-columns: 28px minmax(80px, 140px) 32px; gap: 10px; align-items: center; }
@@ -230,7 +230,7 @@ input.playback-track::-moz-range-thumb { width: 11px; height: 11px; border: 0; b
 .playback-time { font-family: var(--font-mono); font-size: 10px; color: #93938b; text-align: right; }
 .transcript-heading { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 12px; }
 .transcript-heading h3 { font-size: 12px; font-weight: 500; }
-.transcript-heading > span { font-size: 10px; color: #97978e; }
+.transcript-heading > span { font-size: 10px; color: #6c6c64; }
 .transcript-input { width: 100%; min-height: 170px; padding: 20px; border: 1px solid #e9e9e2; border-radius: 10px; background: #fafaf8; color: #3c3c36; font-size: 14px; line-height: 1.8; resize: vertical; }
 .transcript-input::placeholder { color: #aaa99f; }
 .analyse-row { display: flex; justify-content: flex-end; margin-top: 16px; }
@@ -243,7 +243,7 @@ input.playback-track::-moz-range-thumb { width: 11px; height: 11px; border: 0; b
 .analysis-lead h2 { font-size: 25px; font-weight: 450; line-height: 1.3; letter-spacing: -.04em; }
 .analysis-observations { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .analysis-observations > div { padding: 20px; border: 1px solid var(--line); border-radius: 11px; }
-.analysis-observations span, .analysis-rewrite > span { font-size: 10px; color: #919185; }
+.analysis-observations span, .analysis-rewrite > span { font-size: 10px; color: #6c6c64; }
 .analysis-observations p { font-size: 14px; line-height: 1.6; margin-top: 10px; }
 .framework-review { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 22px; }
 .framework-review-item { padding: 14px 0; }
@@ -253,7 +253,7 @@ input.playback-track::-moz-range-thumb { width: 11px; height: 11px; border: 0; b
 .framework-status--clear { background: #7eab8d; }
 .framework-status--partial { background: #d3b676; }
 .framework-status--missing { background: #cccac2; }
-.framework-review-item p { margin-top: 10px; color: #8b8b7f; font-size: 10px; line-height: 1.7; }
+.framework-review-item p { margin-top: 10px; color: #6c6c64; font-size: 12px; line-height: 1.7; }
 .analysis-bottom { display: flex; justify-content: space-between; align-items: flex-end; gap: 25px; margin-top: 20px; padding: 22px; border-radius: 11px; background: #f7f7f3; }
 .analysis-rewrite p { font-size: 15px; line-height: 1.6; margin-top: 8px; }
 .analysis-metrics { display: flex; gap: 12px; white-space: nowrap; font-size: 9px; color: #929283; }
