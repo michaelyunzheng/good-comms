@@ -10,6 +10,7 @@ test.beforeEach(async ({ context, page }) => {
       permissionCalls: 0, stoppedTracks: 0, recorderStarts: 0,
       pendingPermission: false, throwOnStart: false, transcriptions: [],
       transcriptionFailures: 0, analysisResolvers: [],
+      pendingTranscription: false, transcriptionResolvers: [],
     };
     const stream = { getTracks: () => [{ stop: () => { state.stoppedTracks += 1; } }] };
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
@@ -38,6 +39,7 @@ test.beforeEach(async ({ context, page }) => {
     window.fetch = async (input, options) => {
       if (input === '/api/transcribe') {
         state.transcriptions.push(await options.body.get('audio').text());
+        if (state.pendingTranscription) return new Promise(resolve => { state.transcriptionResolvers.push(resolve); });
         if (state.transcriptionFailures-- > 0) return Response.json({ error: 'Service temporarily unavailable. Please retry.' }, { status: 503 });
         return Response.json({ transcript: 'My answer includes a concrete example and a clear conclusion.' });
       }
@@ -167,4 +169,27 @@ test('partial waveform initialization failure closes AudioContext without stoppi
   });
   await record(page);
   expect(await page.evaluate(() => window.recordingTest.closedContexts)).toBe(1);
+});
+
+test('retrying transcription invalidates analysis of a manually edited transcript', async ({ page }) => {
+  await page.evaluate(() => { window.recordingTest.transcriptionFailures = 1; });
+  await record(page);
+  await page.getByRole('textbox', { name: 'Transcript' }).fill('My manually entered answer before retry.');
+  await beginAnalysis(page);
+  await page.getByRole('button', { name: 'Retry transcription' }).click();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).toHaveValue(/concrete example/);
+  await finishAnalysis(page, 'Feedback for obsolete manual text');
+  await expect(page.getByText('Feedback for obsolete manual text')).toHaveCount(0);
+});
+
+test('New ignores a stale transcription even if cancellation is ignored', async ({ page }) => {
+  await page.evaluate(() => { window.recordingTest.pendingTranscription = true; });
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.recordingTest.transcriptionResolvers.length)).toBe(1);
+  await page.getByRole('button', { name: 'New' }).click();
+  await page.evaluate(() => { window.recordingTest.pendingTranscription = false; });
+  await record(page);
+  await page.evaluate(() => window.recordingTest.transcriptionResolvers.shift()(Response.json({ transcript: 'Stale transcription' })));
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).toHaveValue(/concrete example/);
 });

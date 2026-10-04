@@ -516,6 +516,10 @@ export default function SessionClient() {
     blob: Blob,
     version: number
   ) {
+    invalidateAnalysis();
+    setAnalysis(null);
+    setAnalysisStatus("idle");
+    setAnalysisError("");
     transcriptionControllerRef.current?.abort();
     const controller = new AbortController();
     transcriptionControllerRef.current = controller;
@@ -1304,7 +1308,7 @@ export default function SessionClient() {
                 {phase ===
                 "recording"
                   ? "Stop"
-                  : "Speak"}
+                  : startingRecording ? "Starting…" : "Speak"}
               </p>
 
               {microphoneError && (
