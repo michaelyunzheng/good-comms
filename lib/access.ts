@@ -26,6 +26,9 @@ export function getExpectedAccessToken() {
 }
 
 export async function hasBetaAccess() {
+  // Read cookies even when configuration is missing at build time, so this
+  // access check remains request-bound rather than a prerendered redirect.
+  const cookieStore = await cookies();
   const expected =
     getExpectedAccessToken();
 
@@ -33,15 +36,12 @@ export async function hasBetaAccess() {
     return false;
   }
 
-  const cookieStore =
-    await cookies();
-
   const actual =
     cookieStore.get(
       "clearly_access"
     )?.value;
 
-  if (!actual) {
+  if (!actual || !/^[a-f0-9]{64}$/.test(actual)) {
     return false;
   }
 

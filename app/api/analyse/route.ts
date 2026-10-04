@@ -1,3 +1,5 @@
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
+import { enforceLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 import { hasBetaAccess } from "@/lib/access";
@@ -139,7 +141,7 @@ export async function POST(
     }
 
     const body =
-      await request.json();
+      await readJsonBody(request, 100_000);
 
     const prompt =
       typeof body.prompt ===
@@ -178,6 +180,10 @@ export async function POST(
           status: 400,
         }
       );
+    }
+
+    if (prompt.length > 1000) {
+      return NextResponse.json({ error: "Prompt is too long" }, { status: 400 });
     }
 
     if (
@@ -225,6 +231,9 @@ export async function POST(
                 60)
           )
         : null;
+
+    const limited = await enforceLimit(request, "paid");
+    if (limited) return limited;
 
     const openai =
       getOpenAI();
@@ -344,6 +353,9 @@ ${
       },
     });
   } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error(
       "Analysis error:",
       error

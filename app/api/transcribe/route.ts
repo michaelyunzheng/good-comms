@@ -1,3 +1,4 @@
+import { enforceLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 import { hasBetaAccess } from "@/lib/access";
@@ -105,6 +106,9 @@ export async function POST(
         }
       );
     }
+
+    const limited = await enforceLimit(request, "paid");
+    if (limited) return limited;
 
     const openai =
       getOpenAI();

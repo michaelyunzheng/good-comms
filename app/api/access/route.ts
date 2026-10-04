@@ -1,3 +1,5 @@
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
+import { enforceLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
 
 import { createAccessToken } from "@/lib/access";
@@ -8,8 +10,10 @@ export async function POST(
   request: Request
 ) {
   try {
+    const limited = await enforceLimit(request, "access");
+    if (limited) return limited;
     const body =
-      await request.json();
+      await readJsonBody(request, 4096);
 
     const password =
       body?.password;
@@ -88,6 +92,9 @@ export async function POST(
 
     return response;
   } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error(
       "Access error:",
       error

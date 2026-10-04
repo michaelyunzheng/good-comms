@@ -3256,3 +3256,35 @@ div + div {
     order: -1;
   }
 }
+/* Native range control keeps playback seeking usable with keyboard and touch. */
+input.playback-track {
+  appearance: none;
+  overflow: visible;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(to right, var(--ink) var(--playback-progress), var(--line) var(--playback-progress));
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+input.playback-track::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+input.playback-track::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+}
+input.playback-track:focus-visible,
+.record-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 6px;
+}
+.record-button:disabled { cursor: wait; opacity: 0.6; }

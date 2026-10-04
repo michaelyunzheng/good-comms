@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   FormEvent,
-  KeyboardEvent,
   useEffect,
   useRef,
   useState,
@@ -115,7 +116,8 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        setError("Not quite.");
+        const data = await response.json().catch(() => null);
+        setError(response.status === 401 ? "Not quite." : data?.error || "Couldn't sign in. Try again.");
         return;
       }
 
@@ -130,13 +132,13 @@ export default function Home() {
   return (
     <main className="landing">
       <header className="site-header">
-        <a
+        <Link
           className="wordmark"
           href="/"
           aria-label="Clearly home"
         >
           clearly<span>°</span>
-        </a>
+        </Link>
 
         <button
           className="text-button"
@@ -295,9 +297,9 @@ export default function Home() {
       </section>
 
       <footer className="site-footer">
-        <a className="wordmark" href="/">
+        <Link className="wordmark" href="/">
           clearly<span>°</span>
-        </a>
+        </Link>
 
         <span>2026</span>
       </footer>

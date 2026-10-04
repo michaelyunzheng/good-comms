@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import {
   useCallback,
   useEffect,
@@ -252,6 +254,19 @@ export default function SessionClient() {
       Analysis | null
     >(null);
 
+  const [startingRecording, setStartingRecording] = useState(false);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const audioBlobRef = useRef<Blob | null>(null);
+  const transcriptionControllerRef = useRef<AbortController | null>(null);
+  const analysisControllerRef = useRef<AbortController | null>(null);
+  const analysisVersionRef = useRef(0);
+
+  function invalidateAnalysis() {
+    analysisVersionRef.current += 1;
+    analysisControllerRef.current?.abort();
+  }
+
   const recorderRef =
     useRef<
       MediaRecorder | null
@@ -262,16 +277,12 @@ export default function SessionClient() {
       MediaStream | null
     >(null);
 
-  const chunksRef =
-    useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const audioUrlRef =
     useRef<
       string | null
     >(null);
-
-  const discardRecordingRef =
-    useRef(false);
 
   const audioContextRef =
     useRef<
@@ -382,6 +393,8 @@ export default function SessionClient() {
         const context =
           new AudioContextClass();
 
+        audioContextRef.current = context;
+
         const analyser =
           context.createAnalyser();
 
@@ -399,9 +412,6 @@ export default function SessionClient() {
         source.connect(
           analyser
         );
-
-        audioContextRef.current =
-          context;
 
         analyserRef.current =
           analyser;
@@ -506,6 +516,9 @@ export default function SessionClient() {
     blob: Blob,
     version: number
   ) {
+    transcriptionControllerRef.current?.abort();
+    const controller = new AbortController();
+    transcriptionControllerRef.current = controller;
     setTranscriptionStatus(
       "loading"
     );
@@ -551,14 +564,16 @@ export default function SessionClient() {
 
             body:
               formData,
+            signal: controller.signal,
           }
         );
 
-      const data =
-        await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Service returned an unexpected response. Please try again.");
+      });
 
       if (
-        version !==
+        controller.signal.aborted || !mountedRef.current || version !==
         requestVersionRef.current
       ) {
         return;
@@ -566,8 +581,8 @@ export default function SessionClient() {
 
       if (!response.ok) {
         throw new Error(
-          data.error ||
-            "Transcription failed"
+          response.status === 401 ? "Session access expired. Sign in again." : data.error ||
+            "Transcription failed. Please retry."
         );
       }
 
@@ -580,7 +595,7 @@ export default function SessionClient() {
       );
     } catch (error) {
       if (
-        version !==
+        controller.signal.aborted || !mountedRef.current || version !==
         requestVersionRef.current
       ) {
         return;
@@ -595,7 +610,7 @@ export default function SessionClient() {
       );
 
       setTranscriptionError(
-        "Couldn't transcribe."
+        error instanceof TypeError ? "Connection failed. Check your network and retry." : error instanceof Error ? error.message : "Couldn't transcribe. Please retry."
       );
     }
   }
@@ -609,6 +624,10 @@ export default function SessionClient() {
       return;
     }
 
+    invalidateAnalysis();
+    const version = analysisVersionRef.current;
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
     setAnalysisStatus(
       "loading"
     );
@@ -627,6 +646,7 @@ export default function SessionClient() {
             method:
               "POST",
 
+            signal: controller.signal,
             headers: {
               "Content-Type":
                 "application/json",
@@ -648,13 +668,16 @@ export default function SessionClient() {
           }
         );
 
-      const data =
-        await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Service returned an unexpected response. Please try again.");
+      });
+
+      if (!mountedRef.current || version !== analysisVersionRef.current) return;
 
       if (!response.ok) {
         throw new Error(
-          data.error ||
-            "Analysis failed"
+          response.status === 401 ? "Session access expired. Sign in again." : data.error ||
+            "Analysis failed. Please retry."
         );
       }
 
@@ -664,6 +687,7 @@ export default function SessionClient() {
         "ready"
       );
     } catch (error) {
+      if (!mountedRef.current || version !== analysisVersionRef.current) return;
       console.error(
         error
       );
@@ -673,7 +697,7 @@ export default function SessionClient() {
       );
 
       setAnalysisError(
-        "Couldn't analyse this one."
+        error instanceof TypeError ? "Connection failed. Check your network and retry." : error instanceof Error ? error.message : "Couldn't analyse this one."
       );
     }
   }
@@ -720,10 +744,11 @@ export default function SessionClient() {
     const interval =
       window.setInterval(
         () => {
-          setRecordingSeconds(
-            (current) =>
-              current + 1
-          );
+          if (recordingStartedAtRef.current !== null) {
+            const elapsed = Math.floor((performance.now() - recordingStartedAtRef.current) / 1000);
+            setRecordingSeconds(elapsed);
+            if (elapsed >= MAX_RECORDING_DURATION) stopRecording();
+          }
         },
         1000
       );
@@ -732,7 +757,7 @@ export default function SessionClient() {
       window.clearInterval(
         interval
       );
-  }, [phase]);
+  }, [phase, stopRecording]);
 
   useEffect(() => {
     if (
@@ -750,7 +775,15 @@ export default function SessionClient() {
   ]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      requestVersionRef.current += 1;
+      analysisVersionRef.current += 1;
+      transcriptionControllerRef.current?.abort();
+      analysisControllerRef.current?.abort();
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+      audioBlobRef.current = null;
       streamRef.current
         ?.getTracks()
         .forEach(
@@ -838,6 +871,9 @@ export default function SessionClient() {
   }
 
   function newPrompt() {
+    invalidateAnalysis();
+    transcriptionControllerRef.current?.abort();
+    audioBlobRef.current = null;
     requestVersionRef.current +=
       1;
 
@@ -848,9 +884,6 @@ export default function SessionClient() {
       recorder?.state ===
       "recording"
     ) {
-      discardRecordingRef.current =
-        true;
-
       recorder.stop();
     }
 
@@ -922,11 +955,17 @@ export default function SessionClient() {
     setAnalysisError("");
 
     setAnalysis(null);
+    recordingStartedAtRef.current = null;
 
     setPhase("prep");
   }
 
   async function startRecording() {
+    if (startingRef.current || recorderRef.current?.state === "recording") return;
+    startingRef.current = true;
+    setStartingRecording(true);
+    const version = requestVersionRef.current;
+    let acquiredStream: MediaStream | null = null;
     setMicrophoneError(
       ""
     );
@@ -951,6 +990,8 @@ export default function SessionClient() {
         "Recording isn't supported here."
       );
 
+      startingRef.current = false;
+      setStartingRecording(false);
       return;
     }
 
@@ -962,6 +1003,11 @@ export default function SessionClient() {
           }
         );
 
+      acquiredStream = stream;
+      if (!mountedRef.current || version !== requestVersionRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current =
         stream;
 
@@ -973,19 +1019,17 @@ export default function SessionClient() {
       recorderRef.current =
         recorder;
 
-      chunksRef.current =
-        [];
+      const chunks: Blob[] = [];
 
-      discardRecordingRef.current =
-        false;
-
+      const startedAt = performance.now();
+      recordingStartedAtRef.current = startedAt;
       recorder.ondataavailable =
         (event) => {
           if (
             event.data
               .size > 0
           ) {
-            chunksRef.current.push(
+            chunks.push(
               event.data
             );
           }
@@ -993,7 +1037,11 @@ export default function SessionClient() {
 
       recorder.onstop =
         () => {
-          stopAnalyser();
+          if (recorderRef.current === recorder) {
+            recorderRef.current = null;
+            streamRef.current = null;
+            if (mountedRef.current) stopAnalyser();
+          }
 
           stream
             .getTracks()
@@ -1003,26 +1051,23 @@ export default function SessionClient() {
             );
 
           if (
-            discardRecordingRef.current
+            !mountedRef.current || version !== requestVersionRef.current
           ) {
-            discardRecordingRef.current =
-              false;
-
-            chunksRef.current =
-              [];
-
             return;
           }
 
           const blob =
             new Blob(
-              chunksRef.current,
+              chunks,
               {
                 type:
                   recorder.mimeType,
               }
             );
 
+          setRecordingSeconds(Math.max(1, Math.round((performance.now() - startedAt) / 1000)));
+          recordingStartedAtRef.current = null;
+          audioBlobRef.current = blob;
           const url =
             URL.createObjectURL(
               blob
@@ -1036,9 +1081,6 @@ export default function SessionClient() {
             "review"
           );
 
-          const version =
-            requestVersionRef.current;
-
           void transcribeAudio(
             blob,
             version
@@ -1049,24 +1091,30 @@ export default function SessionClient() {
         0
       );
 
-      setPhase(
-        "recording"
-      );
-
-      startAnalyser(
-        stream
-      );
-
       recorder.start();
+      setPhase("recording");
+      // The waveform is optional; an analyser failure must not break recording.
+      try { startAnalyser(stream); } catch { stopAnalyser(); }
     } catch (error) {
+      recorderRef.current = null;
+      streamRef.current = null;
+      acquiredStream?.getTracks().forEach((track) => track.stop());
+      if (!mountedRef.current || version !== requestVersionRef.current) return;
+      stopAnalyser();
+      setPhase("prep");
       console.error(
         "Microphone error:",
         error
       );
 
       setMicrophoneError(
-        "Microphone access is off."
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Microphone access is off. Allow it in your browser settings and try again."
+          : "Couldn't start recording. Check your microphone and try again."
       );
+    } finally {
+      startingRef.current = false;
+      if (mountedRef.current) setStartingRecording(false);
     }
   }
 
@@ -1081,13 +1129,13 @@ export default function SessionClient() {
       className={`session session--${phase}`}
     >
       <header className="session-header">
-        <a
+        <Link
           href="/"
           className="wordmark"
         >
           clearly
           <span>°</span>
-        </a>
+        </Link>
 
         <button
           className="session-new"
@@ -1224,6 +1272,8 @@ export default function SessionClient() {
 
             <section className="record-control">
               <button
+                disabled={startingRecording}
+                aria-label={phase === "recording" ? "Stop recording" : startingRecording ? "Starting microphone" : "Start recording"}
                 className={`record-button ${
                   phase ===
                   "recording"
@@ -1258,7 +1308,7 @@ export default function SessionClient() {
               </p>
 
               {microphoneError && (
-                <p className="microphone-error">
+                <p className="microphone-error" role="alert">
                   {
                     microphoneError
                   }
@@ -1303,12 +1353,16 @@ export default function SessionClient() {
               </div>
 
               <textarea
+                id="transcript"
+                aria-label="Transcript"
                 value={
                   transcript
                 }
                 onChange={(
                   event
                 ) => {
+                  invalidateAnalysis();
+                  setAnalysisError("");
                   setTranscript(
                     event.target
                       .value
@@ -1336,10 +1390,14 @@ export default function SessionClient() {
               />
 
               {transcriptionError && (
-                <p className="inline-error">
-                  {
-                    transcriptionError
-                  }
+                <p className="inline-error" role="alert">
+                  {transcriptionError}
+                  {audioUrl && (
+                    <button type="button" className="text-button" onClick={() => {
+                      const blob = audioBlobRef.current;
+                      if (blob) void transcribeAudio(blob, requestVersionRef.current);
+                    }}>Retry transcription</button>
+                  )}
                 </p>
               )}
 
@@ -1367,7 +1425,7 @@ export default function SessionClient() {
               </div>
 
               {analysisError && (
-                <p className="inline-error analysis-error">
+                <p className="inline-error analysis-error" role="alert">
                   {
                     analysisError
                   }
@@ -1483,12 +1541,9 @@ function AnalysisResults({
           ([
             label,
             item,
-          ]) => (
+          ], index) => (
             <div
-              key={
-                label +
-                item.note
-              }
+              key={`${label}-${index}`}
               className="framework-review-item"
             >
               <div className="framework-review-top">
@@ -1497,6 +1552,8 @@ function AnalysisResults({
                 </span>
 
                 <i
+                  role="img"
+                  aria-label={`Status: ${item.status}`}
                   className={`framework-status framework-status--${item.status}`}
                 />
               </div>
@@ -1663,43 +1720,10 @@ function Playback({
     if (
       audio.paused
     ) {
-      void audio.play();
+      void audio.play().catch(() => setPlaying(false));
     } else {
       audio.pause();
     }
-  }
-
-  function seek(
-    event:
-      React.MouseEvent<HTMLDivElement>
-  ) {
-    const audio =
-      audioRef.current;
-
-    if (
-      !audio ||
-      !duration
-    ) {
-      return;
-    }
-
-    const rect =
-      event.currentTarget.getBoundingClientRect();
-
-    const ratio =
-      Math.max(
-        0,
-        Math.min(
-          1,
-          (event.clientX -
-            rect.left) /
-            rect.width
-        )
-      );
-
-    audio.currentTime =
-      ratio *
-      duration;
   }
 
   const progress =
@@ -1767,19 +1791,23 @@ function Playback({
           : "▶"}
       </button>
 
-      <div
+      <input
+        type="range"
         className="playback-track"
-        onClick={seek}
-      >
-        <span
-          style={{
-            transform: `scaleX(${
-              progress /
-              100
-            })`,
-          }}
-        />
-      </div>
+        aria-label="Playback position"
+        aria-valuetext={`${formatTime(Math.floor(current))} of ${formatTime(Math.floor(duration))}`}
+        min={0}
+        max={duration || 1}
+        step={0.1}
+        value={Math.min(current, duration)}
+        disabled={!duration}
+        style={{ "--playback-progress": `${progress}%` } as React.CSSProperties}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (audioRef.current) audioRef.current.currentTime = next;
+          setCurrent(next);
+        }}
+      />
 
       <span className="playback-time">
         {formatTime(
