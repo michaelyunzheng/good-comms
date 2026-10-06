@@ -60,7 +60,7 @@ async function record(page) {
 }
 
 async function beginAnalysis(page) {
-  await page.getByRole('button', { name: 'Analyse', exact: false }).click();
+  await page.getByRole('button', { name: 'Get feedback', exact: false }).click();
   await expect.poll(() => page.evaluate(() => window.recordingTest.analysisResolvers.length)).toBe(1);
 }
 
@@ -126,7 +126,7 @@ test('New discards analysis from the previous recording', async ({ page }) => {
   await record(page);
   await finishAnalysis(page, 'Stale feedback');
   await expect(page.getByText('Stale feedback')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Analyse', exact: false })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Get feedback', exact: false })).toBeEnabled();
 });
 
 test('editing invalidates in-flight feedback and subsequent analysis works', async ({ page }) => {
@@ -217,4 +217,67 @@ test('New question explores a whole round before repeating and keeps the startin
   await page.getByRole('button', { name: 'New question', exact: true }).click();
   await expect(question).not.toHaveText(round.at(-1));
   expect(round).toContain(await question.innerText());
+});
+
+test('speaking is the primary action and guidance stays optional', async ({ page }) => {
+  await expect(page.getByRole('region', { name: 'Speaking framework' })).not.toBeVisible();
+  await page.getByText('Need a little structure?', { exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Speaking framework' })).toBeVisible();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  await expect(page.getByText('Need a little structure?', { exact: true })).toHaveCount(0);
+});
+
+test('feedback provides a repeat attempt, a next question, and a remembered focus', async ({ page }) => {
+  const question = await page.locator('.session-question h2').innerText();
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await expect(page.getByRole('heading', { name: 'Latest feedback' })).toBeFocused();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).not.toBeVisible();
+  await expect(page.getByText('A useful example.', { exact: true }).first()).not.toBeVisible();
+  await page.getByText('Look closer at your answer', { exact: true }).click();
+  await expect(page.getByText('A useful example.', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Save this tip for next time' }).click();
+  await expect(page.getByRole('status')).toContainText('Tip saved on this device');
+  await page.getByRole('button', { name: 'Try this question again' }).click();
+  await expect(page.locator('.session-question h2')).toHaveText(question);
+  await expect(page.locator('.session-question h2')).toBeFocused();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toContainText('Tighten the ending.');
+  await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeEnabled();
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.getByRole('button', { name: 'Next question', exact: true }).click();
+  await expect(page.locator('.session-question h2')).not.toHaveText(question);
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toContainText('Tighten the ending.');
+  await page.getByRole('button', { name: 'Remove saved focus' }).click();
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toHaveCount(0);
+});
+
+test('editing completed feedback invalidates it and opens the transcript again', async ({ page }) => {
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.getByText('View or edit your transcript', { exact: true }).click();
+  await page.getByRole('textbox', { name: 'Transcript' }).fill('A revised answer.');
+  await expect(page.getByRole('heading', { name: 'Latest feedback' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Get feedback' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).toBeVisible();
+});
+
+test('blocked browser storage does not interrupt feedback or the next question', async ({ page }) => {
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException('Storage blocked', 'SecurityError'); };
+  });
+  await page.getByRole('button', { name: 'Save this tip for next time' }).click();
+  await expect(page.getByRole('status')).toContainText('couldn’t save the tip');
+  await expect(page.getByRole('button', { name: 'Save this tip for next time' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Next question', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeEnabled();
 });
