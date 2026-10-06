@@ -9,7 +9,7 @@ test.beforeEach(async ({ context, page }) => {
     const state = window.recordingTest = {
       permissionCalls: 0, stoppedTracks: 0, recorderStarts: 0,
       pendingPermission: false, throwOnStart: false, transcriptions: [],
-      transcriptionFailures: 0, analysisResolvers: [],
+      transcriptionFailures: 0, analysisResolvers: [], analysisRequests: [],
       pendingTranscription: false, transcriptionResolvers: [],
     };
     const stream = { getTracks: () => [{ stop: () => { state.stoppedTracks += 1; } }] };
@@ -44,7 +44,7 @@ test.beforeEach(async ({ context, page }) => {
         return Response.json({ transcript: 'My answer includes a concrete example and a clear conclusion.' });
       }
       // Deliberately ignore AbortSignal to verify stale-result guards independently.
-      if (input === '/api/analyse') return new Promise(resolve => { state.analysisResolvers.push(resolve); });
+      if (input === '/api/analyse') { state.analysisRequests.push(JSON.parse(options.body)); return new Promise(resolve => { state.analysisResolvers.push(resolve); }); }
       return fetchOriginal(input, options);
     };
   });
@@ -60,7 +60,7 @@ async function record(page) {
 }
 
 async function beginAnalysis(page) {
-  await page.getByRole('button', { name: 'Analyse', exact: false }).click();
+  await page.getByRole('button', { name: 'Get feedback', exact: false }).click();
   await expect.poll(() => page.evaluate(() => window.recordingTest.analysisResolvers.length)).toBe(1);
 }
 
@@ -69,7 +69,7 @@ async function finishAnalysis(page, headline = 'Latest feedback') {
     const step = { status: 'clear', note: 'A useful example.' };
     window.recordingTest.analysisResolvers.shift()(Response.json({
       score: 80, label: 'Strong', headline, strongest: 'The example.', improve: 'Tighten the ending.',
-      betterOpening: 'Here is my point.', metrics: { wordCount: 12, wordsPerMinute: 100 },
+      suggestedResponse: 'Here is my point. A concrete example supports it, and this is why it matters.', suggestionScore: 94, suggestionReason: 'Clear idea, example, and takeaway.', metrics: { wordCount: 12, wordsPerMinute: 100, fillerCount: 1, fillers: [{ word: 'um', count: 1 }], fillersPer100Words: 8.3, repeatedWords: 0 },
       framework: { openingPoint: step, what: step, soWhat: step, nowWhat: step, closingPoint: step },
     }));
   }, headline);
@@ -126,7 +126,7 @@ test('New discards analysis from the previous recording', async ({ page }) => {
   await record(page);
   await finishAnalysis(page, 'Stale feedback');
   await expect(page.getByText('Stale feedback')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Analyse', exact: false })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Get feedback', exact: false })).toBeEnabled();
 });
 
 test('editing invalidates in-flight feedback and subsequent analysis works', async ({ page }) => {
@@ -202,4 +202,155 @@ test('mobile practice and feedback remain usable without horizontal scrolling', 
   await finishAnalysis(page);
   await expect(page.getByRole('heading', { name: 'Latest feedback' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('New question explores a whole round before repeating and keeps the starting hint', async ({ page }) => {
+  const question = page.locator('.session-question h2');
+  const round = [await question.innerText()];
+  await expect(page.locator('.question-hint')).toContainText('Share a moment or example');
+  for (let i = 1; i < 20; i++) {
+    await page.getByRole('button', { name: 'New question', exact: true }).click();
+    await expect(question).not.toHaveText(round.at(-1));
+    round.push(await question.innerText());
+  }
+  expect(new Set(round).size).toBe(20);
+  await page.getByRole('button', { name: 'New question', exact: true }).click();
+  await expect(question).not.toHaveText(round.at(-1));
+  expect(round).toContain(await question.innerText());
+});
+
+test('speaking is the primary action and guidance stays optional', async ({ page }) => {
+  await expect(page.getByRole('region', { name: 'Speaking framework' })).not.toBeVisible();
+  await page.getByText('Need a little structure?', { exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Speaking framework' })).toBeVisible();
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop recording', exact: true })).toBeVisible();
+  await expect(page.getByText('Need a little structure?', { exact: true })).toHaveCount(0);
+});
+
+test('feedback provides a repeat attempt, a next question, and a remembered focus', async ({ page }) => {
+  const question = await page.locator('.session-question h2').innerText();
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await expect(page.getByRole('heading', { name: 'Latest feedback' })).toBeFocused();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).not.toBeVisible();
+  await expect(page.getByText('A useful example.', { exact: true }).first()).toBeVisible();
+  await page.getByText('Look closer at your answer', { exact: true }).click();
+  await expect(page.getByText('A useful example.', { exact: true }).first()).not.toBeVisible();
+  await page.getByText('Look closer at your answer', { exact: true }).click();
+  await expect(page.getByText('A useful example.', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Save this tip for next time' }).click();
+  await expect(page.getByRole('status')).toContainText('Tip saved on this device');
+  await page.getByRole('button', { name: 'Try this question again' }).click();
+  await expect(page.locator('.session-question h2')).toHaveText(question);
+  await expect(page.locator('.session-question h2')).toBeFocused();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toContainText('Tighten the ending.');
+  await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeEnabled();
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.getByRole('button', { name: 'Next question', exact: true }).click();
+  await expect(page.locator('.session-question h2')).not.toHaveText(question);
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toContainText('Tighten the ending.');
+  await page.getByRole('button', { name: 'Remove saved focus' }).click();
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Your saved practice focus' })).toHaveCount(0);
+});
+
+test('editing completed feedback invalidates it and opens the transcript again', async ({ page }) => {
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.getByText('View or edit your transcript', { exact: true }).click();
+  await page.getByRole('textbox', { name: 'Transcript' }).fill('A revised answer.');
+  await expect(page.getByRole('heading', { name: 'Latest feedback' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Get feedback' })).toBeEnabled();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).toBeVisible();
+});
+
+test('blocked browser storage does not interrupt feedback or the next question', async ({ page }) => {
+  await record(page);
+  await beginAnalysis(page);
+  await finishAnalysis(page);
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException('Storage blocked', 'SecurityError'); };
+  });
+  await page.getByRole('button', { name: 'Save this tip for next time' }).click();
+  await expect(page.getByRole('status')).toContainText('couldn’t save the tip');
+  await expect(page.getByRole('button', { name: 'Save this tip for next time' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Next question', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start recording', exact: true })).toBeEnabled();
+});
+
+
+test('free speaking keeps the user’s topic through feedback and another take', async ({ page }) => {
+  await page.getByRole('button', { name: 'What’s on my mind', exact: true }).click();
+  await expect(page.locator('.session-question h2')).toHaveText('What’s on your mind?');
+  await expect(page.getByRole('button', { name: 'Fresh thought' })).toBeVisible();
+  await record(page);
+  await beginAnalysis(page);
+  const request = await page.evaluate(() => window.recordingTest.analysisRequests[0]);
+  expect(request.mode).toBe('free');
+  expect(request.prompt).toContain('whatever is on your mind');
+  await finishAnalysis(page);
+  await expect(page.getByRole('region', { name: 'Speaking statistics' })).toBeVisible();
+  await expect(page.getByText('100 WPM', { exact: true })).toBeVisible();
+  await expect(page.getByText('Model-estimated 94/100', { exact: false })).toBeVisible();
+  await expect(page.getByText('Not measured', { exact: true })).toHaveCount(3);
+  await page.getByRole('button', { name: 'Try this thought again' }).click();
+  await expect(page.getByRole('button', { name: 'What’s on my mind', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await record(page); await beginAnalysis(page); await finishAnalysis(page);
+  await page.getByRole('button', { name: 'Another thought' }).click();
+  await expect(page.locator('.session-question h2')).toHaveText('What’s on your mind?');
+  await page.getByRole('button', { name: 'Give me a question' }).click();
+  await expect(page.locator('.session-question h2')).not.toHaveText('What’s on your mind?');
+});
+
+
+test('recorded audio measurements appear and are cleared for the next take', async ({ page }) => {
+  await page.evaluate(() => {
+    window.recordingTest.audioSamples = 0;
+    window.AudioContext = class {
+      sampleRate = 48000; state = 'running';
+      createMediaStreamSource() { return { connect() {} }; }
+      createAnalyser() { return {
+        fftSize: 2048, frequencyBinCount: 1024,
+        getByteFrequencyData(data) { data.fill(20); },
+        getFloatTimeDomainData(data) {
+          window.recordingTest.audioSamples++;
+          for (let i = 0; i < data.length; i++) data[i] = .1 * Math.sin(2 * Math.PI * 200 * i / 48000);
+        },
+      }; }
+      async close() { this.state = 'closed'; }
+    };
+  });
+  await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.recordingTest.audioSamples)).toBeGreaterThanOrEqual(5);
+  await page.getByRole('button', { name: 'Stop recording', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Transcript' })).not.toBeDisabled();
+  await beginAnalysis(page); await finishAnalysis(page);
+  await expect(page.getByText('0 dB range', { exact: true })).toBeVisible();
+  await expect(page.getByText('0 semitones', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Try this question again' }).click();
+  await page.evaluate(() => { window.AudioContext = class { constructor() { throw new Error('Unavailable'); } }; });
+  await record(page); await beginAnalysis(page); await finishAnalysis(page);
+  await expect(page.getByText('Not measured', { exact: true })).toHaveCount(3);
+});
+
+test('unverified rewrite leaves the original feedback available', async ({ page }) => {
+  await record(page); await beginAnalysis(page);
+  await page.evaluate(() => {
+    const step = { status: 'partial', note: 'Needs more detail.' };
+    window.recordingTest.analysisResolvers.shift()(Response.json({
+      score: 60, label: 'Developing', headline: 'Your feedback still works', strongest: 'A central thought', improve: 'Add your example',
+      suggestedResponse: null, suggestionScore: null, suggestionReason: null,
+      metrics: { wordCount: 12, wordsPerMinute: 100, fillerCount: 0, fillers: [], fillersPer100Words: 0, repeatedWords: 0 },
+      framework: { openingPoint: step, what: step, soWhat: step, nowWhat: step, closingPoint: step },
+    }));
+  });
+  await expect(page.getByRole('heading', { name: 'Your feedback still works' })).toBeVisible();
+  await expect(page.getByText('A 90+ rewrite couldn’t be verified', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try this question again' })).toBeEnabled();
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { questions } from "@/lib/questions";
 import { Brand } from "@/components/brand";
 import { SoundOrb } from "@/components/sound-orb";
 
@@ -191,7 +192,7 @@ export default function Home() {
             </div>
             <div className="preview-example">
               <div className="example-heading"><span className="eyebrow">{previewStage === 2 ? "A useful observation" : "Your question"}</span><span className="example-dot" /></div>
-              <p>{previewStage === 2 ? "Strong opening. Get to the example sooner." : "Tell me about something you changed your mind about."}</p>
+              <p>{previewStage === 2 ? "Strong opening. Get to the example sooner." : questions[9]}</p>
               {previewStage === 1 ? <div className="preview-waveform" aria-hidden="true">{waveform.map((height, index) => <span key={index} style={{ height: `${height}%` }} />)}</div>
                 : <div className="preview-chips">{(previewStage === 0 ? ["Point", "What", "So what", "Now what"] : ["Clarity", "Structure", "Concision"]).map(label => <span key={label}>{label}</span>)}</div>}
               <span className="example-footer">{previewStage === 2 ? "One thing to take into your next conversation." : "No perfect answers. Just your perspective."}</span>

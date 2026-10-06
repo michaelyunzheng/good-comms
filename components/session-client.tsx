@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { speechMetrics, measureAudioFrame, summarizeDelivery, type AudioFrame, type DeliveryStats } from "@/lib/speech-metrics";
+import { usePracticeFocus } from "@/lib/practice-focus";
+import { questions as prompts, questionHint, shuffledQuestionIndices } from "@/lib/questions";
 import { Brand } from "@/components/brand";
 import { SoundOrb } from "@/components/sound-orb";
 
@@ -43,14 +46,11 @@ type Analysis = {
 
   improve: string;
 
-  betterOpening: string;
+  suggestedResponse: string | null;
+  suggestionScore: number | null;
+  suggestionReason: string | null;
 
-  metrics: {
-    wordCount: number;
-    wordsPerMinute:
-      | number
-      | null;
-  };
+  metrics: ReturnType<typeof speechMetrics>;
 
   framework: {
     openingPoint:
@@ -95,23 +95,6 @@ const idleWaveform =
         42)
   );
 
-const prompts = [
-  "What everyday thing deserves a much bigger fan club?",
-
-  "What's something you know a surprising amount about?",
-
-  "If you could add one harmless rule everyone had to follow, what would it be?",
-
-  "What small invention would make your day noticeably better?",
-
-  "What's a boring thing you find weirdly fascinating?",
-
-  "Which fictional gadget would you most like to borrow for a week?",
-
-  "What's a tiny moment that can turn an ordinary day around?",
-
-  "What skill looks like magic until you learn how it works?",
-];
 
 function formatTime(
   seconds: number
@@ -169,7 +152,16 @@ function getAudioExtension(
   return "webm";
 }
 
-export default function SessionClient() {
+export default function SessionClient({ initialQuestionOrder }: { initialQuestionOrder: number[] }) {
+  const [speakingMode, setSpeakingMode] = useState<"question" | "free">("question");
+  const [deliveryStats, setDeliveryStats] = useState<DeliveryStats | null>(null);
+  const audioFramesRef = useRef<AudioFrame[]>([]);
+  const questionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusQuestionRef = useRef(false);
+  const { focus, saveFocus, clearFocus } = usePracticeFocus();
+  const [focusStatus, setFocusStatus] = useState("");
+  const remainingQuestionsRef = useRef(initialQuestionOrder.slice(1));
+  const lastQuestionRef = useRef(initialQuestionOrder[0]);
   const [
     phase,
     setPhase,
@@ -180,7 +172,9 @@ export default function SessionClient() {
     promptIndex,
     setPromptIndex,
   ] =
-    useState(0);
+    useState(initialQuestionOrder[0]);
+
+  const activePrompt = speakingMode === "free" ? "Share whatever is on your mind. Find and express your own central thought." : prompts[promptIndex];
 
   const [
     prepSeconds,
@@ -405,8 +399,7 @@ export default function SessionClient() {
             stream
           );
 
-        analyser.fftSize =
-          128;
+        analyser.fftSize = 2048;
 
         analyser.smoothingTimeConstant =
           0.78;
@@ -423,6 +416,9 @@ export default function SessionClient() {
             analyser.frequencyBinCount
           );
 
+        const timeData = new Float32Array(analyser.fftSize);
+        let lastMeasurement = 0;
+
         function draw(
           timestamp: number
         ) {
@@ -431,6 +427,14 @@ export default function SessionClient() {
 
           if (!active) {
             return;
+          }
+
+          if (timestamp - lastMeasurement >= 200 && typeof active.getFloatTimeDomainData === "function") {
+            lastMeasurement = timestamp;
+            try {
+              active.getFloatTimeDomainData(timeData);
+              if (audioFramesRef.current.length < 3000) audioFramesRef.current.push(measureAudioFrame(timeData, context.sampleRate));
+            } catch { /* Delivery statistics are optional; recording and waveform still work. */ }
           }
 
           if (
@@ -660,10 +664,8 @@ export default function SessionClient() {
 
             body:
               JSON.stringify({
-                prompt:
-                  prompts[
-                    promptIndex
-                  ],
+                prompt: activePrompt,
+                mode: speakingMode,
 
                 transcript:
                   transcript.trim(),
@@ -822,34 +824,6 @@ export default function SessionClient() {
     };
   }, []);
 
-  function getPrepMessage() {
-    if (
-      prepSeconds === 0
-    ) {
-      return "Take your time. Start when ready.";
-    }
-
-    if (
-      prepSeconds <= 10
-    ) {
-      return "One easy breath, then your first point.";
-    }
-
-    if (
-      prepSeconds <= 30
-    ) {
-      return "Choose one detail they can picture.";
-    }
-
-    if (
-      prepSeconds <= 60
-    ) {
-      return "Picture one person you're talking with.";
-    }
-
-    return "Let your shoulders soften. Find your point.";
-  }
-
   function getStepState(
     step: Phase
   ) {
@@ -876,7 +850,11 @@ export default function SessionClient() {
     return "waiting";
   }
 
-  function newPrompt() {
+  function resetTake(changeQuestion: boolean) {
+    audioFramesRef.current = [];
+    setDeliveryStats(null);
+    focusQuestionRef.current = true;
+    setFocusStatus("");
     invalidateAnalysis();
     transcriptionControllerRef.current?.abort();
     audioBlobRef.current = null;
@@ -902,31 +880,14 @@ export default function SessionClient() {
           track.stop()
       );
 
-    setPromptIndex(
-      (current) => {
-        if (
-          prompts.length <=
-          1
-        ) {
-          return current;
-        }
-
-        let next =
-          current;
-
-        while (
-          next === current
-        ) {
-          next =
-            Math.floor(
-              Math.random() *
-                prompts.length
-            );
-        }
-
-        return next;
+    if (changeQuestion && speakingMode === "question") {
+      if (!remainingQuestionsRef.current.length) {
+        remainingQuestionsRef.current = shuffledQuestionIndices(lastQuestionRef.current);
       }
-    );
+      const nextQuestion = remainingQuestionsRef.current.shift()!;
+      lastQuestionRef.current = nextQuestion;
+      setPromptIndex(nextQuestion);
+    }
 
     replaceAudioUrl(
       null
@@ -966,9 +927,25 @@ export default function SessionClient() {
     setPhase("prep");
   }
 
+  function newPrompt() {
+    resetTake(true);
+  }
+
+  function retryPrompt() {
+    resetTake(false);
+  }
+
+  function changeMode(mode: "question" | "free") {
+    if (mode === speakingMode) return;
+    resetTake(false);
+    setSpeakingMode(mode);
+  }
+
   async function startRecording() {
     if (startingRef.current || recorderRef.current?.state === "recording") return;
     startingRef.current = true;
+    audioFramesRef.current = [];
+    setDeliveryStats(null);
     setStartingRecording(true);
     const version = requestVersionRef.current;
     let acquiredStream: MediaStream | null = null;
@@ -1062,6 +1039,9 @@ export default function SessionClient() {
             return;
           }
 
+          setDeliveryStats(summarizeDelivery(audioFramesRef.current));
+          audioFramesRef.current = [];
+
           const blob =
             new Blob(
               chunks,
@@ -1124,6 +1104,14 @@ export default function SessionClient() {
     }
   }
 
+  useEffect(() => {
+    if (phase === "prep" && focusQuestionRef.current) {
+      focusQuestionRef.current = false;
+      questionHeadingRef.current?.focus({ preventScroll: true });
+      questionHeadingRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    }
+  }, [phase, promptIndex, speakingMode]);
+
   const prepProgress =
     ((PREP_DURATION -
       prepSeconds) /
@@ -1133,20 +1121,11 @@ export default function SessionClient() {
   return (
     <div className="session-shell">
       <a className="skip-link" href="#practice-content">Skip to practice</a>
-      <aside className="workspace-sidebar">
-        <Link href="/" aria-label="Clearly home"><Brand /></Link>
-        <div className="workspace-label"><SoundOrb tone="warm" /> Speaking practice</div>
-        <nav aria-label="Workspace"><Link href="/" className="sidebar-home"><span aria-hidden="true">⌂</span> Home</Link><span className="sidebar-current" aria-current="page"><span aria-hidden="true">◉</span> Practice</span></nav>
-        <div className="sidebar-session"><p className="eyebrow">This session</p>
-          {(["prep", "recording", "review"] as Phase[]).map((step, index) => <div key={step} className={`sidebar-step sidebar-step--${getStepState(step)}`} aria-current={phase === step ? "step" : undefined}><span>0{index + 1}</span>{["Think", "Speak", "Review"][index]}<i aria-hidden="true" /></div>)}
-        </div>
-        <div className="sidebar-bottom"><span><span className="status-dot" /> Private beta</span><p>A little practice.<br />A clearer conversation.</p></div>
-      </aside>
     <main
       className={`session session--${phase}`}
     >
       <header className="session-header">
-        <div className="workspace-breadcrumb"><span>Practice</span><span aria-hidden="true">/</span>Speaking session</div>
+        <Link href="/" aria-label="Clearly home"><Brand /></Link>
 
         <button
           className="session-new"
@@ -1154,13 +1133,13 @@ export default function SessionClient() {
             newPrompt
           }
         >
-          New
-          <span>↻</span>
+          {speakingMode === "free" ? "Fresh thought" : "New question"}
+          <span aria-hidden="true">↻</span>
         </button>
       </header>
 
       <div className="session-inner" id="practice-content">
-        <div className="workspace-heading"><div><p className="eyebrow">Your space to practise</p><h1>{phase === "review" ? "A little reflection goes a long way." : "What’s on your mind?"}</h1></div><span className="session-badge">One question. One take.</span></div>
+        <div className="workspace-heading"><h1>{phase === "review" ? "One answer. One small improvement." : "A few minutes for a clearer thought."}</h1></div>
         <nav
           className="session-flow"
           aria-label="Session progress"
@@ -1187,38 +1166,46 @@ export default function SessionClient() {
           />
         </nav>
 
+        {phase === "prep" && (
+          <div className="speaking-mode" role="group" aria-label="What would you like to talk about?">
+            <button aria-pressed={speakingMode === "question"} onClick={() => changeMode("question")}>Give me a question</button>
+            <button aria-pressed={speakingMode === "free"} onClick={() => changeMode("free")}>What’s on my mind</button>
+          </div>
+        )}
+
+        {phase === "prep" && focus && (
+          <aside className="practice-focus" aria-label="Your saved practice focus">
+            <div><span className="eyebrow">Your focus for this answer</span><p>{focus}</p></div>
+            <button className="text-button" onClick={() => clearFocus()} aria-label="Remove saved focus">×</button>
+          </aside>
+        )}
+
         {phase !==
           "review" && (
           <>
             <section className="session-stage">
               <SoundOrb tone={phase === "recording" ? "warm" : "mint"} className="session-orb" />
               <div className="session-question">
-                <p className="eyebrow">Your question</p>
-                <h2>
+                <p className="eyebrow">{speakingMode === "free" ? "Your space to speak" : "Your question"}</p>
+                <h2 ref={questionHeadingRef} tabIndex={-1}>
                   {
-                    prompts[
-                      promptIndex
-                    ]
+                    speakingMode === "free" ? "What’s on your mind?" : activePrompt
                   }
                 </h2>
+                {phase === "prep" && <p className="question-hint">{speakingMode === "free" ? "Start with a thought, a story, or something you’re working through. Follow what matters to you." : questionHint}</p>}
               </div>
 
               {phase ===
                 "prep" && (
                 <div className="prep-panel">
-                  <span className="eyebrow">Time to think</span>
+                  <span className="eyebrow">Thinking time · optional</span>
                   <div className="prep-count">
                     {formatTime(
                       prepSeconds
                     )}
                   </div>
 
-                  <p
-                    key={getPrepMessage()}
-                    className="prep-message"
-                  >
-                    {getPrepMessage()}
-                  </p>
+                  <p className="prep-message">Start whenever you’re ready.</p>
 
                   <div className="prep-track">
                     <span
@@ -1252,7 +1239,42 @@ export default function SessionClient() {
               )}
             </section>
 
-            <div className="framework-heading"><h2>A little structure, if you need it.</h2><p>Use what helps. Make it your own.</p></div>
+            <section className="record-control">
+              <button
+                disabled={startingRecording}
+                aria-label={phase === "recording" ? "Stop recording" : startingRecording ? "Starting microphone" : "Start recording"}
+                className={`record-button ${
+                  phase ===
+                  "recording"
+                    ? "record-button--active"
+                    : ""
+                }`}
+                onClick={
+                  phase ===
+                  "recording"
+                    ? stopRecording
+                    : startRecording
+                }
+              >
+                <span className="record-core" aria-hidden="true">
+                  {phase === "recording" ? <span className="stop-icon" /> : <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.7" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
+                </span>
+                {phase === "recording" ? "Stop recording" : startingRecording ? "Starting…" : "Start speaking"}
+              </button>
+              <p className="record-action">{phase === "recording" ? "Take your time. Stop when you’ve landed your point." : "A short answer is enough. Up to 2 minutes."}</p>
+
+              {microphoneError && (
+                <p className="microphone-error" role="alert">
+                  {
+                    microphoneError
+                  }
+                </p>
+              )}
+            </section>
+            {phase === "prep" && (
+              <details className="framework-help">
+                <summary>Need a little structure?</summary>
+                <p className="framework-intro">Use what helps. You don’t need to cover every step.</p>
             <section className="speaking-framework" aria-label="Speaking framework">
               <FrameworkItem
                 title="Point"
@@ -1285,48 +1307,19 @@ export default function SessionClient() {
               />
             </section>
 
-            <section className="record-control">
-              <button
-                disabled={startingRecording}
-                aria-label={phase === "recording" ? "Stop recording" : startingRecording ? "Starting microphone" : "Start recording"}
-                className={`record-button ${
-                  phase ===
-                  "recording"
-                    ? "record-button--active"
-                    : ""
-                }`}
-                onClick={
-                  phase ===
-                  "recording"
-                    ? stopRecording
-                    : startRecording
-                }
-              >
-                <span className="record-core" aria-hidden="true">
-                  {phase === "recording" ? <span className="stop-icon" /> : <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" strokeWidth="1.7" /><path d="M6 11v1a6 6 0 0 0 12 0v-1M12 18v3M9 21h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>}
-                </span>
-                {phase === "recording" ? "Stop recording" : startingRecording ? "Starting…" : "Start speaking"}
-              </button>
-              <p className="record-action">{phase === "recording" ? "Take your time. Stop when you’ve landed your point." : "Up to 2 minutes. Start whenever you’re ready."}</p>
+              </details>
+            )}
 
-              {microphoneError && (
-                <p className="microphone-error" role="alert">
-                  {
-                    microphoneError
-                  }
-                </p>
-              )}
-            </section>
           </>
         )}
 
         {phase ===
           "review" && (
           <section className="review">
-            <p className="review-question"><span>Your question</span>{prompts[promptIndex]}</p>
+            <p className="review-question"><span>{speakingMode === "free" ? "Free speaking" : "Your question"}</span>{speakingMode === "free" ? "What’s on your mind?" : activePrompt}</p>
             <div className="review-heading">
               <h2>
-                Your answer
+                Listen back
               </h2>
 
               {audioUrl && (
@@ -1339,12 +1332,10 @@ export default function SessionClient() {
               )}
             </div>
 
+            <details className="transcript-details" open={!analysis}>
+              <summary>{analysis ? "View or edit your transcript" : "Your transcript"}</summary>
             <div className="transcript-section">
               <div className="transcript-heading">
-                <h3>
-                  Transcript
-                </h3>
-
                 <span>
                   {transcriptionStatus ===
                   "loading"
@@ -1406,6 +1397,7 @@ export default function SessionClient() {
 
               <div className="analyse-row">
                 <button
+                  aria-label="Get feedback"
                   onClick={
                     analyseResponse
                   }
@@ -1420,8 +1412,8 @@ export default function SessionClient() {
                 >
                   {analysisStatus ===
                   "loading"
-                    ? "Reading…"
-                    : "Analyse"}
+                    ? "Finding your feedback…"
+                    : analysisStatus === "error" ? "Try feedback again" : "Get feedback"}
 
                   <span>→</span>
                 </button>
@@ -1436,12 +1428,22 @@ export default function SessionClient() {
               )}
             </div>
 
+            </details>
             {analysis && (
-              <AnalysisResults
-                analysis={
-                  analysis
-                }
-              />
+              <>
+                <AnalysisResults analysis={analysis} deliveryStats={deliveryStats} savedFocus={focus} onSaveFocus={() => {
+                  const saved = saveFocus(analysis.improve);
+                  setFocusStatus(saved ? "Tip saved on this device for your next practice." : "Your browser couldn’t save the tip. You can still try it in your next answer.");
+                }} />
+                <p className="focus-status" role="status">{focusStatus}</p>
+                <section className="practice-next" aria-label="Keep practising">
+                  <div><h2>That’s one answer practised.</h2><p>Try the tip in a fresh answer, or give this one another go.</p></div>
+                  <div className="practice-next-actions">
+                    <button className="button button--dark" onClick={newPrompt}>{speakingMode === "free" ? "Another thought" : "Next question"} <span aria-hidden="true">→</span></button>
+                    <button className="button button--outline" onClick={retryPrompt}>{speakingMode === "free" ? "Try this thought again" : "Try this question again"}</button>
+                  </div>
+                </section>
+              </>
             )}
           </section>
         )}
@@ -1453,9 +1455,21 @@ export default function SessionClient() {
 
 function AnalysisResults({
   analysis,
+  savedFocus,
+  deliveryStats,
+  onSaveFocus,
 }: {
   analysis: Analysis;
+  savedFocus: string | null;
+  deliveryStats: DeliveryStats | null;
+  onSaveFocus: () => void;
 }) {
+  const headlineRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headlineRef.current?.focus({ preventScroll: true });
+    headlineRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }, []);
+
   const steps = [
     [
       "Point",
@@ -1465,25 +1479,25 @@ function AnalysisResults({
     ],
 
     [
-      "What",
+      "What happened?",
       analysis
         .framework.what,
     ],
 
     [
-      "So what",
+      "So what?",
       analysis
         .framework.soWhat,
     ],
 
     [
-      "Now what",
+      "Now what?",
       analysis
         .framework.nowWhat,
     ],
 
     [
-      "Point",
+      "Takeaway",
       analysis
         .framework
         .closingPoint,
@@ -1494,6 +1508,44 @@ function AnalysisResults({
     <section className="analysis-results">
       <p className="eyebrow">Your feedback</p>
       <div className="analysis-lead">
+        <h2 ref={headlineRef} tabIndex={-1}>
+          {
+            analysis.headline
+          }
+        </h2>
+      </div>
+
+      <div className="analysis-observations">
+        <div>
+          <span>
+            What worked
+          </span>
+
+          <p>
+            {
+              analysis.strongest
+            }
+          </p>
+        </div>
+
+        <div>
+          <span>
+            One thing to try
+          </span>
+
+          <p>
+            {
+              analysis.improve
+            }
+          </p>
+          <button className="text-button save-focus" onClick={onSaveFocus} disabled={savedFocus === analysis.improve}>
+            {savedFocus === analysis.improve ? "Saved for next time ✓" : "Save this tip for next time"}
+          </button>
+        </div>
+      </div>
+
+      <details className="feedback-details" open>
+        <summary>Look closer at your answer</summary>
         <div className="analysis-score">
           <div>
             {
@@ -1507,39 +1559,6 @@ function AnalysisResults({
             }
           </span>
         </div>
-
-        <h2>
-          {
-            analysis.headline
-          }
-        </h2>
-      </div>
-
-      <div className="analysis-observations">
-        <div>
-          <span>
-            Strongest
-          </span>
-
-          <p>
-            {
-              analysis.strongest
-            }
-          </p>
-        </div>
-
-        <div>
-          <span>
-            Next
-          </span>
-
-          <p>
-            {
-              analysis.improve
-            }
-          </p>
-        </div>
-      </div>
 
       <div className="framework-review">
         {steps.map(
@@ -1571,42 +1590,40 @@ function AnalysisResults({
         )}
       </div>
 
+      <SpeechStatistics metrics={analysis.metrics} deliveryStats={deliveryStats} />
       <div className="analysis-bottom">
         <div className="analysis-rewrite">
-          <span>Try</span>
-
-          <p>
-            “
-            {
-              analysis.betterOpening
-            }
-            ”
-          </p>
-        </div>
-
-        <div className="analysis-metrics">
-          <span>
-            {
-              analysis.metrics
-                .wordCount
-            }{" "}
-            words
-          </span>
-
-          {analysis.metrics
-            .wordsPerMinute && (
-            <span>
-              {
-                analysis.metrics
-                  .wordsPerMinute
-              }{" "}
-              wpm
-            </span>
-          )}
+          <h3>Try this response</h3>
+          {analysis.suggestedResponse && analysis.suggestionScore !== null ? (
+            <>
+              <span className="suggestion-score">Model-estimated {analysis.suggestionScore}/100 · checked against the same rubric</span>
+              <p className="suggested-response">{analysis.suggestedResponse}</p>
+              <p className="suggestion-reason">{analysis.suggestionReason}</p>
+            </>
+          ) : <p className="suggestion-reason">A 90+ rewrite couldn’t be verified this time. Your feedback is still ready to use; you can request feedback again to retry the suggestion.</p>}
         </div>
       </div>
+      </details>
     </section>
   );
+}
+
+function SpeechStatistics({ metrics, deliveryStats }: { metrics: ReturnType<typeof speechMetrics>; deliveryStats: DeliveryStats | null }) {
+  const cards = [
+    ["Speaking rate", metrics.wordsPerMinute === null ? "Not available" : `${metrics.wordsPerMinute} WPM`, "Approximate, using transcript and full recording time"],
+    ["Words", `${metrics.wordCount}`, "In the current transcript"],
+    ["Filler words", `${metrics.fillerCount}`, metrics.fillers.length ? metrics.fillers.map(item => `${item.word} × ${item.count}`).join(", ") : "No um / uh / erm / er / hmm detected"],
+    ["Fillers per 100 words", `${metrics.fillersPer100Words}`, "Transcript-based; transcription can omit fillers"],
+    ["Repeated words", `${metrics.repeatedWords}`, "Consecutive repetitions; these can be intentional"],
+    ["Energy", deliveryStats?.energyRangeDb == null ? "Not measured" : `${deliveryStats.energyRangeDb} dB range`, "Variation in relative microphone level"],
+    ["Tonality", deliveryStats?.pitchRangeSemitones == null ? "Not measured" : `${deliveryStats.pitchRangeSemitones} semitones`, "Pitch variation in detected voiced audio"],
+    ["Quiet samples", deliveryStats?.quietPercent == null ? "Not measured" : `${deliveryStats.quietPercent}%`, "Low-level audio samples; an estimate of pauses"],
+  ];
+  return <section className="speech-statistics" aria-label="Speaking statistics">
+    <h3>Your speaking statistics</h3>
+    <dl className="statistics-grid">{cards.map(([label, value, note]) => <div key={label}><dt>{label}</dt><dd>{value}</dd><p>{note}</p></div>)}</dl>
+    <p className="statistics-note">Audio statistics are sampled on this device while recording. Room noise, microphone processing and background tabs can affect them. They describe variation, not emotion, confidence or personality.</p>
+  </section>;
 }
 
 function FlowStep({
@@ -1623,6 +1640,7 @@ function FlowStep({
   return (
     <div
       className={`flow-step flow-step--${state}`}
+      aria-current={state === "active" ? "step" : undefined}
     >
       <span className="flow-number" aria-hidden="true">{state === "complete" ? "✓" : ({ Think: "01", Speak: "02", Review: "03" }[label])}</span>
       <span>{label}</span>
