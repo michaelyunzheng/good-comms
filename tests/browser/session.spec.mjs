@@ -203,3 +203,18 @@ test('mobile practice and feedback remain usable without horizontal scrolling', 
   await expect(page.getByRole('heading', { name: 'Latest feedback' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('New question explores a whole round before repeating and keeps the starting hint', async ({ page }) => {
+  const question = page.locator('.session-question h2');
+  const round = [await question.innerText()];
+  await expect(page.locator('.question-hint')).toContainText('Share a moment or example');
+  for (let i = 1; i < 20; i++) {
+    await page.getByRole('button', { name: 'New question', exact: true }).click();
+    await expect(question).not.toHaveText(round.at(-1));
+    round.push(await question.innerText());
+  }
+  expect(new Set(round).size).toBe(20);
+  await page.getByRole('button', { name: 'New question', exact: true }).click();
+  await expect(question).not.toHaveText(round.at(-1));
+  expect(round).toContain(await question.innerText());
+});

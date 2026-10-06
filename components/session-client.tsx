@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { questions as prompts, questionHint, shuffledQuestionIndices } from "@/lib/questions";
 import { Brand } from "@/components/brand";
 import { SoundOrb } from "@/components/sound-orb";
 
@@ -95,23 +96,6 @@ const idleWaveform =
         42)
   );
 
-const prompts = [
-  "What everyday thing deserves a much bigger fan club?",
-
-  "What's something you know a surprising amount about?",
-
-  "If you could add one harmless rule everyone had to follow, what would it be?",
-
-  "What small invention would make your day noticeably better?",
-
-  "What's a boring thing you find weirdly fascinating?",
-
-  "Which fictional gadget would you most like to borrow for a week?",
-
-  "What's a tiny moment that can turn an ordinary day around?",
-
-  "What skill looks like magic until you learn how it works?",
-];
 
 function formatTime(
   seconds: number
@@ -169,7 +153,9 @@ function getAudioExtension(
   return "webm";
 }
 
-export default function SessionClient() {
+export default function SessionClient({ initialQuestionOrder }: { initialQuestionOrder: number[] }) {
+  const remainingQuestionsRef = useRef(initialQuestionOrder.slice(1));
+  const lastQuestionRef = useRef(initialQuestionOrder[0]);
   const [
     phase,
     setPhase,
@@ -180,7 +166,7 @@ export default function SessionClient() {
     promptIndex,
     setPromptIndex,
   ] =
-    useState(0);
+    useState(initialQuestionOrder[0]);
 
   const [
     prepSeconds,
@@ -902,31 +888,12 @@ export default function SessionClient() {
           track.stop()
       );
 
-    setPromptIndex(
-      (current) => {
-        if (
-          prompts.length <=
-          1
-        ) {
-          return current;
-        }
-
-        let next =
-          current;
-
-        while (
-          next === current
-        ) {
-          next =
-            Math.floor(
-              Math.random() *
-                prompts.length
-            );
-        }
-
-        return next;
-      }
-    );
+    if (!remainingQuestionsRef.current.length) {
+      remainingQuestionsRef.current = shuffledQuestionIndices(lastQuestionRef.current);
+    }
+    const nextQuestion = remainingQuestionsRef.current.shift()!;
+    lastQuestionRef.current = nextQuestion;
+    setPromptIndex(nextQuestion);
 
     replaceAudioUrl(
       null
@@ -1154,8 +1121,8 @@ export default function SessionClient() {
             newPrompt
           }
         >
-          New
-          <span>↻</span>
+          New question
+          <span aria-hidden="true">↻</span>
         </button>
       </header>
 
@@ -1201,6 +1168,7 @@ export default function SessionClient() {
                     ]
                   }
                 </h2>
+                {phase === "prep" && <p className="question-hint">{questionHint}</p>}
               </div>
 
               {phase ===
