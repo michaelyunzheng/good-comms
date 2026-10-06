@@ -23,3 +23,10 @@ test('malformed access cookie is unauthorized rather than a server error', async
   const headers = { Cookie: `clearly_access=${'z'.repeat(64)}` };
   expect((await request.post('/api/analyse', { headers, data: {} })).status()).toBe(401);
 });
+
+
+test('free speaking accepts its own topic while question mode requires a prompt', async ({ request }) => {
+  const headers = { Cookie: `clearly_access=${cookie}` };
+  expect((await request.post('/api/analyse', { headers, data: { mode: 'free', transcript: 'Something I am thinking about today.' } })).status()).toBe(503);
+  expect((await request.post('/api/analyse', { headers, data: { mode: 'question', transcript: 'Something I am thinking about today.' } })).status()).toBe(400);
+});

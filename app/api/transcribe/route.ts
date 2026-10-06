@@ -117,6 +117,7 @@ export async function POST(
       await openai.audio.transcriptions.create(
         {
           file: audio,
+          prompt: "Verbatim conversational speech. Keep audible fillers such as um, uh, erm and hmm, repeated words, and false starts. Do not add words that were not spoken.",
           model:
             "gpt-4o-transcribe",
         }

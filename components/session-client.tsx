@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { speechMetrics, measureAudioFrame, summarizeDelivery, type AudioFrame, type DeliveryStats } from "@/lib/speech-metrics";
 import { usePracticeFocus } from "@/lib/practice-focus";
 import { questions as prompts, questionHint, shuffledQuestionIndices } from "@/lib/questions";
 import { Brand } from "@/components/brand";
@@ -45,14 +46,11 @@ type Analysis = {
 
   improve: string;
 
-  betterOpening: string;
+  suggestedResponse: string | null;
+  suggestionScore: number | null;
+  suggestionReason: string | null;
 
-  metrics: {
-    wordCount: number;
-    wordsPerMinute:
-      | number
-      | null;
-  };
+  metrics: ReturnType<typeof speechMetrics>;
 
   framework: {
     openingPoint:
@@ -155,6 +153,9 @@ function getAudioExtension(
 }
 
 export default function SessionClient({ initialQuestionOrder }: { initialQuestionOrder: number[] }) {
+  const [speakingMode, setSpeakingMode] = useState<"question" | "free">("question");
+  const [deliveryStats, setDeliveryStats] = useState<DeliveryStats | null>(null);
+  const audioFramesRef = useRef<AudioFrame[]>([]);
   const questionHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusQuestionRef = useRef(false);
   const { focus, saveFocus, clearFocus } = usePracticeFocus();
@@ -172,6 +173,8 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
     setPromptIndex,
   ] =
     useState(initialQuestionOrder[0]);
+
+  const activePrompt = speakingMode === "free" ? "Share whatever is on your mind. Find and express your own central thought." : prompts[promptIndex];
 
   const [
     prepSeconds,
@@ -396,8 +399,7 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             stream
           );
 
-        analyser.fftSize =
-          128;
+        analyser.fftSize = 2048;
 
         analyser.smoothingTimeConstant =
           0.78;
@@ -414,6 +416,9 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             analyser.frequencyBinCount
           );
 
+        const timeData = new Float32Array(analyser.fftSize);
+        let lastMeasurement = 0;
+
         function draw(
           timestamp: number
         ) {
@@ -422,6 +427,14 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
 
           if (!active) {
             return;
+          }
+
+          if (timestamp - lastMeasurement >= 200 && typeof active.getFloatTimeDomainData === "function") {
+            lastMeasurement = timestamp;
+            try {
+              active.getFloatTimeDomainData(timeData);
+              if (audioFramesRef.current.length < 3000) audioFramesRef.current.push(measureAudioFrame(timeData, context.sampleRate));
+            } catch { /* Delivery statistics are optional; recording and waveform still work. */ }
           }
 
           if (
@@ -651,10 +664,8 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
 
             body:
               JSON.stringify({
-                prompt:
-                  prompts[
-                    promptIndex
-                  ],
+                prompt: activePrompt,
+                mode: speakingMode,
 
                 transcript:
                   transcript.trim(),
@@ -840,6 +851,8 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
   }
 
   function resetTake(changeQuestion: boolean) {
+    audioFramesRef.current = [];
+    setDeliveryStats(null);
     focusQuestionRef.current = true;
     setFocusStatus("");
     invalidateAnalysis();
@@ -867,7 +880,7 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
           track.stop()
       );
 
-    if (changeQuestion) {
+    if (changeQuestion && speakingMode === "question") {
       if (!remainingQuestionsRef.current.length) {
         remainingQuestionsRef.current = shuffledQuestionIndices(lastQuestionRef.current);
       }
@@ -922,9 +935,17 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
     resetTake(false);
   }
 
+  function changeMode(mode: "question" | "free") {
+    if (mode === speakingMode) return;
+    resetTake(false);
+    setSpeakingMode(mode);
+  }
+
   async function startRecording() {
     if (startingRef.current || recorderRef.current?.state === "recording") return;
     startingRef.current = true;
+    audioFramesRef.current = [];
+    setDeliveryStats(null);
     setStartingRecording(true);
     const version = requestVersionRef.current;
     let acquiredStream: MediaStream | null = null;
@@ -1018,6 +1039,9 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             return;
           }
 
+          setDeliveryStats(summarizeDelivery(audioFramesRef.current));
+          audioFramesRef.current = [];
+
           const blob =
             new Blob(
               chunks,
@@ -1086,7 +1110,7 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
       questionHeadingRef.current?.focus({ preventScroll: true });
       questionHeadingRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
     }
-  }, [phase, promptIndex]);
+  }, [phase, promptIndex, speakingMode]);
 
   const prepProgress =
     ((PREP_DURATION -
@@ -1109,7 +1133,7 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             newPrompt
           }
         >
-          New question
+          {speakingMode === "free" ? "Fresh thought" : "New question"}
           <span aria-hidden="true">↻</span>
         </button>
       </header>
@@ -1142,6 +1166,13 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
           />
         </nav>
 
+        {phase === "prep" && (
+          <div className="speaking-mode" role="group" aria-label="What would you like to talk about?">
+            <button aria-pressed={speakingMode === "question"} onClick={() => changeMode("question")}>Give me a question</button>
+            <button aria-pressed={speakingMode === "free"} onClick={() => changeMode("free")}>What’s on my mind</button>
+          </div>
+        )}
+
         {phase === "prep" && focus && (
           <aside className="practice-focus" aria-label="Your saved practice focus">
             <div><span className="eyebrow">Your focus for this answer</span><p>{focus}</p></div>
@@ -1155,15 +1186,13 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             <section className="session-stage">
               <SoundOrb tone={phase === "recording" ? "warm" : "mint"} className="session-orb" />
               <div className="session-question">
-                <p className="eyebrow">Your question</p>
+                <p className="eyebrow">{speakingMode === "free" ? "Your space to speak" : "Your question"}</p>
                 <h2 ref={questionHeadingRef} tabIndex={-1}>
                   {
-                    prompts[
-                      promptIndex
-                    ]
+                    speakingMode === "free" ? "What’s on your mind?" : activePrompt
                   }
                 </h2>
-                {phase === "prep" && <p className="question-hint">{questionHint}</p>}
+                {phase === "prep" && <p className="question-hint">{speakingMode === "free" ? "Start with a thought, a story, or something you’re working through. Follow what matters to you." : questionHint}</p>}
               </div>
 
               {phase ===
@@ -1287,7 +1316,7 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
         {phase ===
           "review" && (
           <section className="review">
-            <p className="review-question"><span>Your question</span>{prompts[promptIndex]}</p>
+            <p className="review-question"><span>{speakingMode === "free" ? "Free speaking" : "Your question"}</span>{speakingMode === "free" ? "What’s on your mind?" : activePrompt}</p>
             <div className="review-heading">
               <h2>
                 Listen back
@@ -1402,16 +1431,16 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
             </details>
             {analysis && (
               <>
-                <AnalysisResults analysis={analysis} savedFocus={focus} onSaveFocus={() => {
+                <AnalysisResults analysis={analysis} deliveryStats={deliveryStats} savedFocus={focus} onSaveFocus={() => {
                   const saved = saveFocus(analysis.improve);
                   setFocusStatus(saved ? "Tip saved on this device for your next practice." : "Your browser couldn’t save the tip. You can still try it in your next answer.");
                 }} />
                 <p className="focus-status" role="status">{focusStatus}</p>
                 <section className="practice-next" aria-label="Keep practising">
-                  <div><h2>That’s one answer practised.</h2><p>Try the tip with a fresh question, or give this one another go.</p></div>
+                  <div><h2>That’s one answer practised.</h2><p>Try the tip in a fresh answer, or give this one another go.</p></div>
                   <div className="practice-next-actions">
-                    <button className="button button--dark" onClick={newPrompt}>Next question <span aria-hidden="true">→</span></button>
-                    <button className="button button--outline" onClick={retryPrompt}>Try this question again</button>
+                    <button className="button button--dark" onClick={newPrompt}>{speakingMode === "free" ? "Another thought" : "Next question"} <span aria-hidden="true">→</span></button>
+                    <button className="button button--outline" onClick={retryPrompt}>{speakingMode === "free" ? "Try this thought again" : "Try this question again"}</button>
                   </div>
                 </section>
               </>
@@ -1427,10 +1456,12 @@ export default function SessionClient({ initialQuestionOrder }: { initialQuestio
 function AnalysisResults({
   analysis,
   savedFocus,
+  deliveryStats,
   onSaveFocus,
 }: {
   analysis: Analysis;
   savedFocus: string | null;
+  deliveryStats: DeliveryStats | null;
   onSaveFocus: () => void;
 }) {
   const headlineRef = useRef<HTMLHeadingElement>(null);
@@ -1513,7 +1544,7 @@ function AnalysisResults({
         </div>
       </div>
 
-      <details className="feedback-details">
+      <details className="feedback-details" open>
         <summary>Look closer at your answer</summary>
         <div className="analysis-score">
           <div>
@@ -1559,43 +1590,40 @@ function AnalysisResults({
         )}
       </div>
 
+      <SpeechStatistics metrics={analysis.metrics} deliveryStats={deliveryStats} />
       <div className="analysis-bottom">
         <div className="analysis-rewrite">
-          <span>Try</span>
-
-          <p>
-            “
-            {
-              analysis.betterOpening
-            }
-            ”
-          </p>
-        </div>
-
-        <div className="analysis-metrics">
-          <span>
-            {
-              analysis.metrics
-                .wordCount
-            }{" "}
-            words
-          </span>
-
-          {analysis.metrics
-            .wordsPerMinute && (
-            <span>
-              {
-                analysis.metrics
-                  .wordsPerMinute
-              }{" "}
-              wpm
-            </span>
-          )}
+          <h3>Try this response</h3>
+          {analysis.suggestedResponse && analysis.suggestionScore !== null ? (
+            <>
+              <span className="suggestion-score">Model-estimated {analysis.suggestionScore}/100 · checked against the same rubric</span>
+              <p className="suggested-response">{analysis.suggestedResponse}</p>
+              <p className="suggestion-reason">{analysis.suggestionReason}</p>
+            </>
+          ) : <p className="suggestion-reason">A 90+ rewrite couldn’t be verified this time. Your feedback is still ready to use; you can request feedback again to retry the suggestion.</p>}
         </div>
       </div>
       </details>
     </section>
   );
+}
+
+function SpeechStatistics({ metrics, deliveryStats }: { metrics: ReturnType<typeof speechMetrics>; deliveryStats: DeliveryStats | null }) {
+  const cards = [
+    ["Speaking rate", metrics.wordsPerMinute === null ? "Not available" : `${metrics.wordsPerMinute} WPM`, "Approximate, using transcript and full recording time"],
+    ["Words", `${metrics.wordCount}`, "In the current transcript"],
+    ["Filler words", `${metrics.fillerCount}`, metrics.fillers.length ? metrics.fillers.map(item => `${item.word} × ${item.count}`).join(", ") : "No um / uh / erm / er / hmm detected"],
+    ["Fillers per 100 words", `${metrics.fillersPer100Words}`, "Transcript-based; transcription can omit fillers"],
+    ["Repeated words", `${metrics.repeatedWords}`, "Consecutive repetitions; these can be intentional"],
+    ["Energy", deliveryStats?.energyRangeDb == null ? "Not measured" : `${deliveryStats.energyRangeDb} dB range`, "Variation in relative microphone level"],
+    ["Tonality", deliveryStats?.pitchRangeSemitones == null ? "Not measured" : `${deliveryStats.pitchRangeSemitones} semitones`, "Pitch variation in detected voiced audio"],
+    ["Quiet samples", deliveryStats?.quietPercent == null ? "Not measured" : `${deliveryStats.quietPercent}%`, "Low-level audio samples; an estimate of pauses"],
+  ];
+  return <section className="speech-statistics" aria-label="Speaking statistics">
+    <h3>Your speaking statistics</h3>
+    <dl className="statistics-grid">{cards.map(([label, value, note]) => <div key={label}><dt>{label}</dt><dd>{value}</dd><p>{note}</p></div>)}</dl>
+    <p className="statistics-note">Audio statistics are sampled on this device while recording. Room noise, microphone processing and background tabs can affect them. They describe variation, not emotion, confidence or personality.</p>
+  </section>;
 }
 
 function FlowStep({

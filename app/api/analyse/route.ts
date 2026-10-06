@@ -1,3 +1,5 @@
+import { analysisSchema, coachInstructions, verifySuggestion } from "@/lib/analysis-coach";
+import { speechMetrics } from "@/lib/speech-metrics";
 import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 import { enforceLimit } from "@/lib/rate-limit";
 import { NextResponse } from "next/server";
@@ -6,99 +8,6 @@ import { hasBetaAccess } from "@/lib/access";
 import { getOpenAI } from "@/lib/openai";
 
 export const runtime = "nodejs";
-
-const frameworkStepSchema = {
-  type: "object",
-  additionalProperties: false,
-
-  properties: {
-    status: {
-      type: "string",
-      enum: [
-        "clear",
-        "partial",
-        "missing",
-      ],
-    },
-
-    note: {
-      type: "string",
-    },
-  },
-
-  required: [
-    "status",
-    "note",
-  ],
-};
-
-const analysisSchema = {
-  type: "object",
-  additionalProperties: false,
-
-  properties: {
-    score: {
-      type: "integer",
-      minimum: 0,
-      maximum: 100,
-    },
-
-    headline: {
-      type: "string",
-    },
-
-    strongest: {
-      type: "string",
-    },
-
-    improve: {
-      type: "string",
-    },
-
-    betterOpening: {
-      type: "string",
-    },
-
-    framework: {
-      type: "object",
-      additionalProperties: false,
-
-      properties: {
-        openingPoint:
-          frameworkStepSchema,
-
-        what:
-          frameworkStepSchema,
-
-        soWhat:
-          frameworkStepSchema,
-
-        nowWhat:
-          frameworkStepSchema,
-
-        closingPoint:
-          frameworkStepSchema,
-      },
-
-      required: [
-        "openingPoint",
-        "what",
-        "soWhat",
-        "nowWhat",
-        "closingPoint",
-      ],
-    },
-  },
-
-  required: [
-    "score",
-    "headline",
-    "strongest",
-    "improve",
-    "betterOpening",
-    "framework",
-  ],
-};
 
 function getLabel(
   score: number
@@ -170,7 +79,10 @@ export async function POST(
           )
         : null;
 
-    if (!prompt) {
+    const mode = body.mode === "free" ? "free" : "question";
+    const effectivePrompt = mode === "free" ? "Share whatever is on your mind. Find and express your own central thought." : prompt;
+
+    if (!effectivePrompt) {
       return NextResponse.json(
         {
           error:
@@ -215,22 +127,8 @@ export async function POST(
       );
     }
 
-    const words =
-      transcript
-        .split(/\s+/)
-        .filter(Boolean);
-
-    const wordCount =
-      words.length;
-
-    const wordsPerMinute =
-      durationSeconds
-        ? Math.round(
-            wordCount /
-              (durationSeconds /
-                60)
-          )
-        : null;
+    const metrics = speechMetrics(transcript, durationSeconds);
+    const { wordCount, wordsPerMinute } = metrics;
 
     const limited = await enforceLimit(request, "paid");
     if (limited) return limited;
@@ -249,51 +147,13 @@ export async function POST(
          */
         store: false,
 
-        instructions: `
-You are a precise communication coach.
-
-Evaluate the response as spoken communication, based only on the supplied transcript, question, and basic timing information.
-
-Focus on:
-- clarity
-- structure
-- relevance
-- concision
-- specificity
-- whether the speaker lands their main idea
-
-Use this framework as a helpful scaffold, not a rigid checklist:
-
-POINT
-Lead with the answer or central idea.
-
-WHAT
-Explain what happened or what the idea is.
-
-SO WHAT
-Explain why it matters.
-
-NOW WHAT
-Explain what changed, what follows, or what was learned.
-
-POINT
-Land the answer cleanly.
-
-Important:
-- Do not judge accent, personality, intelligence, confidence, charisma, identity, or speaking style.
-- Do not claim to evaluate vocal delivery because you only have a transcript.
-- Be constructive rather than flattering.
-- Prefer one strong observation over many weak ones.
-- The score is directional, not scientific.
-- A concise excellent answer can score very highly.
-- Do not require every framework section when it would make the answer unnatural.
-- Keep each feedback field concise.
-- betterOpening should preserve the speaker's meaning and voice rather than turning it into corporate language.
-        `.trim(),
+        instructions: coachInstructions,
 
         input: `
-QUESTION:
-${prompt}
+MODE: ${mode}
+
+QUESTION OR INTENT:
+${effectivePrompt}
 
 RESPONSE:
 ${transcript}
@@ -325,7 +185,7 @@ ${
               analysisSchema,
           },
         },
-      });
+      }, { signal: request.signal });
 
     if (
       !response.output_text
@@ -340,18 +200,26 @@ ${
         response.output_text
       );
 
+    const suggestion = await verifySuggestion(async ({ instructions, input, schema }) => {
+      const result = await openai.responses.create({
+        model: "gpt-5.6-terra", store: false, instructions, input,
+        text: { format: { type: "json_schema", name: "suggestion_review", strict: true, schema } },
+      }, { signal: request.signal });
+      if (!result.output_text) throw new Error("Suggestion review returned no text");
+      return result.output_text;
+    }, effectivePrompt, transcript, analysis.candidateResponse);
+
+    const { candidateResponse: _candidate, ...feedback } = analysis;
+    void _candidate;
     return NextResponse.json({
-      ...analysis,
-
-      label: getLabel(
-        analysis.score
-      ),
-
-      metrics: {
-        wordCount,
-        wordsPerMinute,
-      },
+      ...feedback,
+      suggestedResponse: suggestion?.response ?? null,
+      suggestionScore: suggestion?.score ?? null,
+      suggestionReason: suggestion?.reason ?? null,
+      label: getLabel(analysis.score),
+      metrics,
     });
+
   } catch (error) {
     if (error instanceof RequestBodyError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

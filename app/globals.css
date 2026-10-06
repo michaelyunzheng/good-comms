@@ -250,6 +250,28 @@ summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 5px; b
 .practice-next p { margin-top: 6px; font-size: 13px; color: var(--muted); }
 .practice-next-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 
+/* Speaking modes and measurable delivery feedback. */
+.speaking-mode { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 20px; background: #f3f3f1; border: 1px solid var(--line); border-radius: 12px; max-width: 100%; }
+.speaking-mode button { padding: 11px 15px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.speaking-mode button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 4px #0000000c; }
+.speech-statistics { margin-top: 26px; }
+.speech-statistics h3, .analysis-rewrite h3 { margin-bottom: 14px; font-size: 14px; font-weight: 500; }
+.statistics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.statistics-grid > div { padding: 16px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.statistics-grid dt { font-size: 11px; color: var(--muted); }
+.statistics-grid dd { margin: 8px 0; font-size: 19px; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.statistics-grid p, .statistics-note { font-size: 11px; line-height: 1.6; color: var(--muted); }
+.statistics-note { margin-top: 12px; }
+.suggestion-score { display: inline-block; font-size: 11px; color: var(--muted); line-height: 1.6; }
+.analysis-rewrite .suggested-response { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.8; }
+.analysis-rewrite .suggestion-reason { margin-top: 12px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+@media (max-width: 760px) {
+  .statistics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statistics-grid > div { padding: 13px; }
+  .speaking-mode { display: flex; }
+  .speaking-mode button { flex: 1; padding: 11px 9px; }
+}
+
 /* Responsive layouts retain the actual product controls, not a scaled desktop. */
 @media (max-width: 1100px) {
   .preview-panel { grid-template-columns: 1fr 1fr; gap: 24px; }
